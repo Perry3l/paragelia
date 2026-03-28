@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "683663767773",
+    "firebase_url": "https://genikaserver-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "genikaserver",
+    "storage_bucket": "genikaserver.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:683663767773:android:5e5c2b08c853f096208334",
+        "android_client_info": {
+          "package_name": "com.ads.paragelia"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDueVQvd9Yl8QCqDtyXVs1_VM7GN60NvKo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
