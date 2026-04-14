@@ -248,7 +248,7 @@ public class ActiveTablesActivity extends AppCompatActivity {
                                 String timestamp = paymentToken.get("timestamp").getAsString();
 
                                 android.content.Intent posIntent = com.ads.paragelia.paroxos.EpayHelper.createSaleIntent(
-                                        getPackageName(), amount, netAmount, vatAmount, orderRef, uid, signature, "004", timestamp, "CONTACTLESS", "12345678"
+                                        getPackageName(), amount, netAmount, vatAmount, orderRef, uid, signature, "004", timestamp, "CONTACTLESS", "22223729"
                                 );
                                 if (posIntent != null) startActivityForResult(posIntent, 1001);
                             } catch (Exception e) {
@@ -415,27 +415,30 @@ public class ActiveTablesActivity extends AppCompatActivity {
         String authCode = res.getAuthenticationCode() != null ? res.getAuthenticationCode() : "-";
         String qrUrl = res.getQrCode() != null ? res.getQrCode() : "";
 
-        String[] options = {"🖨️ Εκτύπωση στο Ταμείο", "📱 Αποστολή με SMS"};
+        String[] options = {"🖨️ Εκτύπωση στο Ταμείο", "📱 Αποστολή με SMS", "❌ Καμία ενέργεια"};
 
         new android.app.AlertDialog.Builder(this)
-                // Βάλαμε το μήνυμα μέσα στον τίτλο για να μην κρυφτούν τα κουμπιά!
                 .setTitle("Επιτυχία! MARK: " + markStr + "\n\nΠώς θέλετε να παραδοθεί;")
                 .setItems(options, (dialog, which) -> {
                     if (which == 0) {
-                        // Βάζουμε τα στοιχεία στο αντικείμενο του τραπεζιού
+                        // Εκτύπωση
                         pendingTableData.put("epsilon_mark", markStr);
                         pendingTableData.put("epsilon_uid", uid);
                         pendingTableData.put("epsilon_auth", authCode);
                         pendingTableData.put("epsilon_qr", qrUrl);
 
-                        // Το στέλνουμε στο Firebase για να το πάρει ο εκτυπωτής ZCS
                         DatabaseReference receiptsRef = FirebaseDatabase.getInstance().getReference("receipts").child(pendingTableNumber);
                         receiptsRef.setValue(pendingTableData).addOnSuccessListener(aVoid -> {
-                            billsRef.child(pendingTableNumber).removeValue(); // Σβήσιμο τραπεζιού
+                            billsRef.child(pendingTableNumber).removeValue();
                             android.widget.Toast.makeText(this, "Εστάλη στον εκτυπωτή!", android.widget.Toast.LENGTH_SHORT).show();
                         });
                     } else if (which == 1) {
+                        // SMS
                         showSmsDialog(pendingTableNumber, pendingOrderDetails, markStr, qrUrl);
+                    } else if (which == 2) {
+                        // Καμία ενέργεια – απλά διαγράφουμε το τραπέζι
+                        billsRef.child(pendingTableNumber).removeValue()
+                                .addOnSuccessListener(aVoid -> android.widget.Toast.makeText(this, "Το τραπέζι " + pendingTableNumber + " έκλεισε χωρίς άλλη ενέργεια", android.widget.Toast.LENGTH_SHORT).show());
                     }
                 })
                 .setCancelable(false)

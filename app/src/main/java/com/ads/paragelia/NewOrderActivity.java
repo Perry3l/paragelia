@@ -1,115 +1,168 @@
 package com.ads.paragelia;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.EditText;
-import android.widget.ImageButton;
-import android.widget.LinearLayout;
-import android.widget.Toast;
+import android.widget.TextView;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.cardview.widget.CardView;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class NewOrderActivity extends AppCompatActivity {
 
-    private EditText editTableNumber;
-    private LinearLayout itemsContainer;
-    private Button btnAddItem, btnSubmit;
+    private RecyclerView tableRecyclerView;
+    private TableAdapter tableAdapter;
+    private DatabaseReference activeBillsRef;
+    private List<TableData> tableList = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_new_order);
 
-        editTableNumber = findViewById(R.id.editTableNumber);
-        itemsContainer = findViewById(R.id.itemsContainer);
-        btnAddItem = findViewById(R.id.btnAddItem);
-        btnSubmit = findViewById(R.id.btnSubmit);
+        tableRecyclerView = findViewById(R.id.tableRecyclerView);
+        tableRecyclerView.setLayoutManager(new GridLayoutManager(this, 2));
+        tableAdapter = new TableAdapter();
+        tableRecyclerView.setAdapter(tableAdapter);
 
-        // --- ΝΕΟΣ ΚΩΔΙΚΑΣ: Λήψη του αριθμού τραπεζιού από το Intent ---
-        String tableNumber = getIntent().getStringExtra("EXTRA_TABLE_NUMBER");
-        if (tableNumber != null && !tableNumber.trim().isEmpty()) {
-            editTableNumber.setText(tableNumber);
-            // Κλειδώνουμε το πεδίο ώστε ο σερβιτόρος να μην το αλλάξει κατά λάθος
-            // αφού θέλει να προσθέσει είδη σε ήδη υπάρχον τραπέζι
-            editTableNumber.setEnabled(false);
+        activeBillsRef = FirebaseDatabase.getInstance().getReference("active_bills");
+
+        // Αρχικοποίηση λίστας για τραπέζια 1-10
+        for (int i = 1; i <= 10; i++) {
+            tableList.add(new TableData(String.valueOf(i), "Καμία παραγγελία", false));
         }
-        // ---------------------------------------------------------------
+        tableAdapter.notifyDataSetChanged();
 
-        btnAddItem.setOnClickListener(v -> addItemRow());
-        btnSubmit.setOnClickListener(v -> submitOrder());
 
-        // Προσθήκη αρχικής κενής γραμμής
-        addItemRow();
-    }
 
-    private void addItemRow() {
-        View itemRow = LayoutInflater.from(this).inflate(R.layout.item_order_row, itemsContainer, false);
-        ImageButton btnRemove = itemRow.findViewById(R.id.btnRemove);
-        btnRemove.setOnClickListener(v -> itemsContainer.removeView(itemRow));
-        itemsContainer.addView(itemRow);
-    }
-
-    private void submitOrder() {
-        String tableNumberStr = editTableNumber.getText().toString().trim();
-        if (tableNumberStr.isEmpty()) {
-            Toast.makeText(this, "Εισάγετε αριθμό τραπεζιού", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        int tableNumber = Integer.parseInt(tableNumberStr);
-
-        // Συλλογή προϊόντων
-        List<Map<String, Object>> itemsList = new ArrayList<>();
-        for (int i = 0; i < itemsContainer.getChildCount(); i++) {
-            View row = itemsContainer.getChildAt(i);
-            EditText editItemName = row.findViewById(R.id.editItemName);
-            EditText editQuantity = row.findViewById(R.id.editQuantity);
-            String name = editItemName.getText().toString().trim();
-            String quantityStr = editQuantity.getText().toString().trim();
-            if (name.isEmpty() || quantityStr.isEmpty()) {
-                Toast.makeText(this, "Συμπληρώστε όλα τα πεδία προϊόντων", Toast.LENGTH_SHORT).show();
-                return;
+        // Live ενημέρωση από Firebase
+        activeBillsRef.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                for (int i = 1; i <= 10; i++) {
+                    String tableKey = String.valueOf(i);
+                    if (snapshot.hasChild(tableKey)) {
+                        Map<String, Object> tableData = (Map<String, Object>) snapshot.child(tableKey).getValue();
+                        String summary = buildOrderSummary(tableData);
+                        tableList.get(i-1).setSummary(summary);
+                        tableList.get(i-1).setHasOrder(true);
+                    } else {
+                        tableList.get(i-1).setSummary("Καμία παραγγελία");
+                        tableList.get(i-1).setHasOrder(false);
+                    }
+                }
+                tableAdapter.notifyDataSetChanged();
             }
-            int quantity = Integer.parseInt(quantityStr);
-            Map<String, Object> item = new HashMap<>();
-            item.put("name", name);
-            item.put("quantity", quantity);
-            itemsList.add(item);
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) { }
+        });
+    }
+
+    private String buildOrderSummary(Map<String, Object> tableData) {
+        StringBuilder sb = new StringBuilder();
+        int totalItems = 0;
+        for (Map.Entry<String, Object> entry : tableData.entrySet()) {
+            if (entry.getValue() instanceof Map) {
+                Map<String, Object> order = (Map<String, Object>) entry.getValue();
+                Object itemsObj = order.get("items");
+                if (itemsObj instanceof List) {
+                    List<Map<String, Object>> items = (List<Map<String, Object>>) itemsObj;
+                    for (Map<String, Object> item : items) {
+                        if (totalItems >= 5) {
+                            sb.append("...");
+                            break;
+                        }
+                        String name = (String) item.get("name");
+                        Object qtyObj = item.get("quantity");
+                        int qty = (qtyObj instanceof Long) ? ((Long) qtyObj).intValue() : (int) qtyObj;
+                        sb.append(name).append(" x").append(qty).append(", ");
+                        totalItems++;
+                    }
+                }
+            }
+        }
+        if (sb.length() > 2) {
+            sb.setLength(sb.length() - 2);
+            return sb.toString();
+        }
+        return "Καμία παραγγελία";
+    }
+
+    private class TableAdapter extends RecyclerView.Adapter<TableAdapter.TableViewHolder> {
+
+        @NonNull @Override
+        public TableViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_table_card, parent, false);
+            return new TableViewHolder(view);
         }
 
-        if (itemsList.isEmpty()) {
-            Toast.makeText(this, "Προσθέστε τουλάχιστον ένα προϊόν", Toast.LENGTH_SHORT).show();
-            return;
+        @Override
+        public void onBindViewHolder(@NonNull TableViewHolder holder, int position) {
+            TableData data = tableList.get(position);
+            holder.tvTableNumber.setText("Τραπέζι " + data.tableNumber);
+            holder.tvOrderSummary.setText(data.summary);
+            if (data.hasOrder) {
+                holder.cardView.setCardBackgroundColor(0xFFE8F5E9);
+            } else {
+                holder.cardView.setCardBackgroundColor(0xFFFFFFFF);
+            }
+
+            // Άνοιγμα TableOrderActivity όταν πατηθεί ΟΛΟΚΛΗΡΗ η κάρτα
+            holder.cardView.setOnClickListener(v -> {
+                Intent intent = new Intent(NewOrderActivity.this, TableOrderActivity.class);
+                intent.putExtra("table_number", data.tableNumber);
+                startActivity(intent);
+            });
+
+            // (Προαιρετικά) Μπορείς να αφήσεις το κουμπί "+ Προσθήκη" να κάνει το ίδιο
+            holder.btnAddExtra.setOnClickListener(v -> {
+                Intent intent = new Intent(NewOrderActivity.this, TableOrderActivity.class);
+                intent.putExtra("table_number", data.tableNumber);
+                startActivity(intent);
+            });
         }
 
-        // Δημιουργία αντικειμένου παραγγελίας
-        Map<String, Object> order = new HashMap<>();
-        order.put("tableNumber", tableNumber);
-        order.put("items", itemsList);
-        order.put("timestamp", System.currentTimeMillis());
-        order.put("status", "pending");
-        order.put("deviceRole", "client");
+        @Override
+        public int getItemCount() { return tableList.size(); }
 
-        // Αποστολή στο Firebase (default instance)
-        FirebaseDatabase database = FirebaseDatabase.getInstance();
-        DatabaseReference ordersRef = database.getReference("orders");
-        String orderId = ordersRef.push().getKey();
-        ordersRef.child(orderId).setValue(order)
-                .addOnSuccessListener(aVoid -> {
-                    Toast.makeText(NewOrderActivity.this, "Η παραγγελία στάλθηκε επιτυχώς", Toast.LENGTH_SHORT).show();
-                    finish();
-                })
-                .addOnFailureListener(e -> {
-                    Toast.makeText(NewOrderActivity.this, "Σφάλμα: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                });
+        class TableViewHolder extends RecyclerView.ViewHolder {
+            TextView tvTableNumber, tvOrderSummary;
+            Button btnAddExtra;
+            CardView cardView;
+
+            TableViewHolder(@NonNull View itemView) {
+                super(itemView);
+                tvTableNumber = itemView.findViewById(R.id.tvTableNumber);
+                tvOrderSummary = itemView.findViewById(R.id.tvOrderSummary);
+                btnAddExtra = itemView.findViewById(R.id.btnAddExtra);
+                cardView = (CardView) itemView;
+            }
+        }
+    }
+
+    private static class TableData {
+        String tableNumber; String summary; boolean hasOrder;
+        TableData(String tableNumber, String summary, boolean hasOrder) {
+            this.tableNumber = tableNumber; this.summary = summary; this.hasOrder = hasOrder;
+        }
+        void setSummary(String summary) { this.summary = summary; }
+        void setHasOrder(boolean hasOrder) { this.hasOrder = hasOrder; }
     }
 }

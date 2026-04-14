@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- Header -->
+    <TextView
+        android:id="@+id/tvTableTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Τραπέζι X"
+        android:textSize="24sp"
+        android:textStyle="bold" />
+
+    <!-- Λίστα υπαρχόντων items (Cart) -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Τρέχουσα παραγγελία:"
+        android:layout_marginTop="16dp"
+        android:textStyle="bold" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvCart"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="8dp"
+        android:nestedScrollingEnabled="true" />
+
+    <!-- Κουμπί για να δούμε όλη την παραγγελία σε popup -->
+    <Button
+        android:id="@+id/btnViewFullOrder"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Προβολή όλης της παραγγελίας"
+        android:layout_marginBottom="8dp"
+        android:backgroundTint="#2196F3" />
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#CCCCCC"
+        android:layout_marginVertical="8dp" />
+
+    <!-- Ενότητα προσθήκης νέων προϊόντων -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Προσθήκη νέων προϊόντων:"
+        android:textStyle="bold" />
+
+    <!-- Κατηγορίες (horizontal scroll) -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvCategories"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+
+    <!-- Λίστα προϊόντων της επιλεγμένης κατηγορίας -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvProducts"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+        android:layout_marginTop="8dp" />
+
+    <TextView
+        android:id="@+id/tvCartTotal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:padding="16dp"
+        android:gravity="end"
+        android:text="Σύνολο: €0.00" />
+
+    <!-- Κουμπί αποθήκευσης αλλαγών -->
+    <Button
+        android:id="@+id/btnSaveChanges"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Αποθήκευση αλλαγών"
+        android:layout_marginTop="16dp"
+        android:backgroundTint="#4CAF50" />
+
+</LinearLayout>
