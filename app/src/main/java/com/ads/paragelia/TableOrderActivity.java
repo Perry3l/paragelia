@@ -14,7 +14,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.firebase.database.*;
 import java.util.*;
 
-public class TableOrderActivity extends AppCompatActivity {
+public class TableOrderActivity extends BaseActivity {
 
     private static final String EXTRA_TABLE_NUMBER = "table_number";
     private String tableNumber;

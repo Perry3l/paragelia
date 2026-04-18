@@ -5,6 +5,65 @@
     android:orientation="vertical"
     android:padding="16dp">
 
+    <LinearLayout
+        android:id="@+id/statusBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:background="#F0F0F0"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/status_clock"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="--:--"
+            android:textStyle="bold"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/status_net"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🌐"
+            android:textSize="18sp"
+            android:paddingEnd="8dp" />
+
+        <TextView
+            android:id="@+id/status_gps"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📍"
+            android:textSize="18sp"
+            android:paddingEnd="8dp" />
+
+        <TextView
+            android:id="@+id/status_battery"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔋"
+            android:textSize="18sp"
+            android:paddingEnd="8dp" />
+
+        <TextView
+            android:id="@+id/status_nfc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📱"
+            android:textSize="18sp"
+            android:paddingEnd="8dp" />
+
+        <TextView
+            android:id="@+id/status_printer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🖨️"
+            android:textSize="18sp" />
+
+    </LinearLayout>
+
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -28,6 +87,33 @@
         android:layout_height="wrap_content"
         android:text="Πληροφορίες Εκτυπωτή"
         android:layout_marginBottom="1dp"/>
+    <Button
+        android:id="@+id/btnSettings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="⚙️ Ρυθμίσεις"
+        android:layout_marginTop="8dp"
+        android:backgroundTint="#607D8B"
+        android:textColor="#FFFFFF"
+        android:padding="12dp" />
+    <Button
+        android:id="@+id/btnTakeAway"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Take Away"
+        android:layout_marginTop="8dp"
+        android:backgroundTint="#FF5722"
+        android:textColor="#FFFFFF"
+        android:padding="12dp" />
+    <Button
+        android:id="@+id/btnTakeAwayOrders"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Take Away Παραγγελίες"
+        android:layout_marginTop="4dp"
+        android:backgroundTint="#9C27B0"
+        android:textColor="#FFFFFF"
+        android:padding="12dp" />
     <Button
         android:id="@+id/btnViewTables"
         android:layout_width="match_parent"

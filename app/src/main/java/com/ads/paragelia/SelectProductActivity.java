@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class SelectProductActivity extends AppCompatActivity {
+public class SelectProductActivity extends BaseActivity {
 
     private RecyclerView categoryRecycler, productRecycler;
     private TextView tvCategoryTitle;

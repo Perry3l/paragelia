@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:orientation="vertical"
     android:padding="16dp">
 
@@ -14,46 +14,88 @@
         android:textStyle="bold"
         android:layout_marginBottom="12dp"/>
 
-    <!-- TabLayout για κατηγορίες (θα το γεμίσουμε δυναμικά) -->
-    <com.google.android.material.tabs.TabLayout
-        android:id="@+id/tabCategories"
+    <!-- Αναζήτηση -->
+    <EditText
+        android:id="@+id/etSearch"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="?attr/colorPrimary"
-        app:tabTextColor="@android:color/white"
-        app:tabSelectedTextColor="@android:color/white"
-        app:tabIndicatorColor="@android:color/white"/>
+        android:hint="🔍 Αναζήτηση προϊόντος..."
+        android:inputType="text"
+        android:padding="12dp"
+        android:layout_marginBottom="8dp"
+        android:background="@android:drawable/editbox_background"
+        android:maxLines="1"/>
 
-    <!-- RecyclerView προϊόντων -->
+    <!-- Οριζόντιο scroll για τις κατηγορίες -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none">
+
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tabCategories"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?attr/colorPrimary"
+            app:tabMode="scrollable"
+            app:tabTextColor="@android:color/white"
+            app:tabSelectedTextColor="@android:color/white"
+            app:tabIndicatorColor="@android:color/white"/>
+
+    </HorizontalScrollView>
+
+    <!-- RecyclerView προϊόντων με μέγιστο ύψος -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvProducts"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:layout_marginTop="12dp"
-        android:nestedScrollingEnabled="true"/>
+        android:nestedScrollingEnabled="true"
+        android:minHeight="200dp"
+        android:maxHeight="300dp"/>
 
-    <!-- Λίστα με ήδη επιλεγμένα προϊόντα (τρέχουσα παραγγελία) -->
+    <!-- Ετικέτα επιλεγμένων -->
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Επιλεγμένα είδη:"
         android:textStyle="bold"
-        android:layout_marginTop="12dp"/>
+        android:layout_marginTop="8dp"/>
 
+    <!-- Καλάθι -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvSelectedItems"
         android:layout_width="match_parent"
-        android:layout_height="120dp"
+        android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:background="#F5F5F5"
-        android:padding="4dp"/>
+        android:padding="4dp"
+        android:minHeight="60dp"/>
 
-    <Button
-        android:id="@+id/btnSubmitOrder"
+    <!-- Κουμπιά ενεργειών -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:text="Ολοκλήρωση Παραγγελίας"
-        android:backgroundTint="#4CAF50"/>
+        android:orientation="horizontal"
+        android:layout_marginTop="16dp">
+
+        <Button
+            android:id="@+id/btnSubmitOnly"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Ολοκλήρωση"
+            android:layout_marginEnd="8dp"
+            android:backgroundTint="#FF9800"/>
+
+        <Button
+            android:id="@+id/btnSubmitAndPrint"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Ολοκλήρωση &amp; Εκτύπωση"
+            android:backgroundTint="#4CAF50"/>
+    </LinearLayout>
+
 </LinearLayout>

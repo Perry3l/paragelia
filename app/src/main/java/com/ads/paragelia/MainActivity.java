@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.View;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
@@ -19,8 +20,8 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
-public class MainActivity extends AppCompatActivity {
-
+public class MainActivity extends BaseActivity {
+    private CardView cardTakeAway;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -66,16 +67,34 @@ public class MainActivity extends AppCompatActivity {
                 finish();
             }
         });
+        cardTakeAway = findViewById(R.id.cardTakeAway);
+
+        SharedPreferences prefsa = getSharedPreferences(SettingsActivity.PREFS_NAME, MODE_PRIVATE);
+        boolean takeawayEnabled = prefsa.getBoolean(SettingsActivity.KEY_TAKEAWAY_ENABLED, true);
+
+        if (takeawayEnabled) {
+            cardTakeAway.setVisibility(View.VISIBLE);
+            cardTakeAway.setOnClickListener(v -> {
+                Intent intent = new Intent(MainActivity.this, TakeAwayActivity.class);
+                startActivity(intent);
+            });
+        } else {
+            cardTakeAway.setVisibility(View.GONE);
+        }
 
         cardTables.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, ActiveTablesActivity.class);
             startActivity(intent);
         });
 
-        cardHistory.setOnClickListener(v -> Toast.makeText(MainActivity.this, "Ιστορικό Παραγγελιών", Toast.LENGTH_SHORT).show());
-
-        cardReports.setOnClickListener(v -> Toast.makeText(MainActivity.this, "Αναφορές", Toast.LENGTH_SHORT).show());
-    }
+        cardHistory.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, HistoryActivity.class);
+            startActivity(intent);
+        });
+        cardReports.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, SettingsActivity.class);
+            startActivity(intent);
+        });    }
 
     private void performEpsilonLogin() {
         // --- ΠΡΟΣΟΧΗ: ΑΥΤΟΙ ΕΙΝΑΙ ΟΙ ΔΟΚΙΜΑΣΤΙΚΟΙ (BETA) ΚΩΔΙΚΟΙ ---

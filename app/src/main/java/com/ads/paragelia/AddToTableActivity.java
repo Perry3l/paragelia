@@ -22,7 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class AddToTableActivity extends AppCompatActivity {
+public class AddToTableActivity extends BaseActivity {
 
     private TextView tvTableNumber;
     private Button btnSelectProduct, btnSubmit;

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/tvTableInfo"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Τραπέζι X - Διαχωρισμός"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp"/>
+
+    <TextView
+        android:id="@+id/tvRemainingTotal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Συνολικό υπόλοιπο: €0.00"
+        android:textSize="16sp"
+        android:layout_marginBottom="8dp"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvItems"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"/>
+
+    <TextView
+        android:id="@+id/tvSplitTotal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Τρέχον μέρος: €0.00"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginTop="8dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnAddPart"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Προσθήκη μέρους"
+            android:layout_marginEnd="8dp"
+            android:backgroundTint="#FF9800"/>
+
+        <Button
+            android:id="@+id/btnFinish"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Ολοκλήρωση"
+            android:backgroundTint="#4CAF50"/>
+    </LinearLayout>
+</LinearLayout>

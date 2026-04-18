@@ -9,7 +9,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 
-public class SetupActivity extends AppCompatActivity {
+public class SetupActivity extends BaseActivity {
 
     public static final String PREFS_NAME = "AppPrefs";
     public static final String KEY_DEVICE_ROLE = "device_role";

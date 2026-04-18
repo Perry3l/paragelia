@@ -24,7 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class NewOrderActivity extends AppCompatActivity {
+public class NewOrderActivity extends BaseActivity {
 
     private RecyclerView tableRecyclerView;
     private TableAdapter tableAdapter;
@@ -124,18 +124,15 @@ public class NewOrderActivity extends AppCompatActivity {
                 holder.cardView.setCardBackgroundColor(0xFFFFFFFF);
             }
 
-            // Άνοιγμα TableOrderActivity όταν πατηθεί ΟΛΟΚΛΗΡΗ η κάρτα
+            // Σωστό: άνοιγμα ΜΟΝΟ με κλικ
             holder.cardView.setOnClickListener(v -> {
-                Intent intent = new Intent(NewOrderActivity.this, TableOrderActivity.class);
-                intent.putExtra("table_number", data.tableNumber);
-                startActivity(intent);
+                ProductSelectionBottomSheet bottomSheet = ProductSelectionBottomSheet.newInstance(data.tableNumber);
+                bottomSheet.show(getSupportFragmentManager(), "product_sheet");
             });
 
-            // (Προαιρετικά) Μπορείς να αφήσεις το κουμπί "+ Προσθήκη" να κάνει το ίδιο
             holder.btnAddExtra.setOnClickListener(v -> {
-                Intent intent = new Intent(NewOrderActivity.this, TableOrderActivity.class);
-                intent.putExtra("table_number", data.tableNumber);
-                startActivity(intent);
+                ProductSelectionBottomSheet bottomSheet = ProductSelectionBottomSheet.newInstance(data.tableNumber);
+                bottomSheet.show(getSupportFragmentManager(), "product_sheet");
             });
         }
 

@@ -29,6 +29,22 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Paragelia">
         <activity
+            android:name=".PrinterSettingsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".TakeAwayActivity"
+            android:exported="false" />
+        <activity
+            android:name=".HistoryActivity"
+            android:exported="false" />
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".SplitItemsActivity"
+            android:exported="false" />
+        <activity android:name=".TakeAwayOrdersActivity" android:exported="false" />
+        <activity
             android:name=".SelectProductActivity"
             android:exported="false" />
         <activity
