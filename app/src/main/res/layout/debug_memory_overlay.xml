@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/debugMemoryOverlay"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#CC000000"
+    android:padding="8dp"
+    android:layout_gravity="end|top">
+
+    <TextView
+        android:id="@+id/tvMemoryUsed"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Used: ? MB"
+        android:textColor="#FFEB3B"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/tvMemoryAvailable"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Avail: ? MB"
+        android:textColor="#4CAF50"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/tvMemoryMax"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Max: ? MB"
+        android:textColor="#FFFFFF"
+        android:textSize="12sp" />
+</LinearLayout>

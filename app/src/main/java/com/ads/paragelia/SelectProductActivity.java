@@ -41,7 +41,7 @@ public class SelectProductActivity extends BaseActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_select_product);
-
+        showMemoryOverlay();
         categoryRecycler = findViewById(R.id.categoryRecyclerView);
         productRecycler = findViewById(R.id.productRecyclerView);
         tvCategoryTitle = findViewById(R.id.tvCategoryTitle);
@@ -51,7 +51,7 @@ public class SelectProductActivity extends BaseActivity {
         categoryRecycler.setLayoutManager(new LinearLayoutManager(this));
         productRecycler.setLayoutManager(new LinearLayoutManager(this));
 
-        productsRef = FirebaseDatabase.getInstance().getReference("products");
+        productsRef = FirebaseHelper.getReference("products");
 
         productsRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override

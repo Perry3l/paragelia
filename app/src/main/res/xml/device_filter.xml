@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Πρόσθεσε εδώ τα VID/PID των εκτυπωτών που υποστηρίζεις -->
+    <!-- π.χ. για Epson: 0x04B8, 0x0202 -->
+    <usb-device vendor-id="1234" product-id="5678" />
+</resources>

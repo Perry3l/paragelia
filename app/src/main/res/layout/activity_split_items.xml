@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/main"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="#F5F5F5">
 
     <TextView
         android:id="@+id/tvTableInfo"
@@ -13,51 +14,72 @@
         android:text="Τραπέζι X - Διαχωρισμός"
         android:textSize="20sp"
         android:textStyle="bold"
-        android:layout_marginBottom="16dp"/>
+        android:layout_marginBottom="16dp" />
 
-    <TextView
-        android:id="@+id/tvRemainingTotal"
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Συνολικό υπόλοιπο: €0.00"
-        android:textSize="16sp"
-        android:layout_marginBottom="8dp"/>
+        app:cardCornerRadius="12dp"
+        app:cardElevation="2dp"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:id="@+id/tvRemainingTotal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Συνολικό υπόλοιπο: €0.00"
+            android:textSize="16sp"
+            android:padding="12dp" />
+    </com.google.android.material.card.MaterialCardView>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvItems"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"/>
+        android:layout_weight="1" />
 
-    <TextView
-        android:id="@+id/tvSplitTotal"
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Τρέχον μέρος: €0.00"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:layout_marginTop="8dp"/>
+        app:cardCornerRadius="12dp"
+        app:cardElevation="2dp"
+        app:cardBackgroundColor="#FFF3E0"
+        android:layout_marginTop="8dp">
+
+        <TextView
+            android:id="@+id/tvSplitTotal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Τρέχον μέρος: €0.00"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="#E65100"
+            android:padding="12dp" />
+    </com.google.android.material.card.MaterialCardView>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal">
+        android:orientation="horizontal"
+        android:layout_marginTop="12dp">
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnAddPart"
+            style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Προσθήκη μέρους"
             android:layout_marginEnd="8dp"
-            android:backgroundTint="#FF9800"/>
+            android:text="Προσθήκη μέρους"
+            android:icon="@android:drawable/ic_menu_add" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/btnFinish"
+            style="@style/Widget.Material3.Button"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Ολοκλήρωση"
-            android:backgroundTint="#4CAF50"/>
+            android:icon="@android:drawable/ic_menu_save" />
     </LinearLayout>
 </LinearLayout>

@@ -1,10 +1,19 @@
 package com.ads.paragelia;
 
 import android.annotation.SuppressLint;
+import android.app.ActivityManager;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
+import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
 import androidx.appcompat.app.AppCompatActivity;
 
 public class BaseActivity extends AppCompatActivity {
@@ -19,6 +28,12 @@ public class BaseActivity extends AppCompatActivity {
     private final Runnable hideRunnable = this::hideSystemUI;
     private final Runnable resetTapRunnable = () -> tapCount = 0;
 
+    // Memory overlay components
+    private LinearLayout memoryOverlay;
+    private TextView tvMemUsed, tvMemAvailable, tvMemMax;
+    private Handler memHandler = new Handler(Looper.getMainLooper());
+    private Runnable memUpdater;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -31,10 +46,75 @@ public class BaseActivity extends AppCompatActivity {
         });
     }
 
+    // ======================== MEMORY OVERLAY METHODS ========================
+
+    /**
+     * Ελέγχει τις ρυθμίσεις και εμφανίζει ή κρύβει το debug overlay μνήμης.
+     * Κλήση από onResume() ή από SettingsActivity όταν αλλάζει η ρύθμιση.
+     */
+    protected void applyMemoryOverlaySetting() {
+        SharedPreferences prefs = getSharedPreferences("debug_prefs", MODE_PRIVATE);
+        boolean showOverlay = prefs.getBoolean("show_memory_overlay", false);
+        if (showOverlay) {
+            showMemoryOverlay();
+        } else {
+            hideMemoryOverlay();
+        }
+    }
+
+    protected void showMemoryOverlay() {
+        if (memoryOverlay != null) return; // ήδη ορατό
+
+        LayoutInflater inflater = LayoutInflater.from(this);
+        memoryOverlay = (LinearLayout) inflater.inflate(R.layout.debug_memory_overlay, null);
+        addContentView(memoryOverlay, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        tvMemUsed = memoryOverlay.findViewById(R.id.tvMemoryUsed);
+        tvMemAvailable = memoryOverlay.findViewById(R.id.tvMemoryAvailable);
+        tvMemMax = memoryOverlay.findViewById(R.id.tvMemoryMax);
+
+        memUpdater = new Runnable() {
+            @Override
+            public void run() {
+                updateMemoryInfo();
+                memHandler.postDelayed(this, 1000); // κάθε 1 δευτερόλεπτο
+            }
+        };
+        memHandler.post(memUpdater);
+    }
+
+    protected void hideMemoryOverlay() {
+        if (memoryOverlay == null) return;
+        memHandler.removeCallbacks(memUpdater);
+        ((ViewGroup) memoryOverlay.getParent()).removeView(memoryOverlay);
+        memoryOverlay = null;
+    }
+
+    private void updateMemoryInfo() {
+        ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+        ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        am.getMemoryInfo(mi);
+
+        long usedMem = mi.totalMem - mi.availMem;
+        if (tvMemUsed != null)
+            tvMemUsed.setText(String.format("Used: %d MB", usedMem / (1024 * 1024)));
+        if (tvMemAvailable != null)
+            tvMemAvailable.setText(String.format("Avail: %d MB", mi.availMem / (1024 * 1024)));
+        if (tvMemMax != null)
+            tvMemMax.setText(String.format("Max: %d MB", mi.totalMem / (1024 * 1024)));
+    }
+
+    // ======================== TOUCH / FULLSCREEN LOGIC ========================
+
     @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onResume() {
         super.onResume();
+
+        // Εφαρμογή της ρύθμισης memory overlay (θα εμφανιστεί/κρυφτεί ανάλογα)
+        applyMemoryOverlaySetting();
 
         View root = findViewById(android.R.id.content);
         if (root != null) {
@@ -63,6 +143,14 @@ public class BaseActivity extends AppCompatActivity {
         super.onPause();
         handler.removeCallbacks(hideRunnable);
         handler.removeCallbacks(resetTapRunnable);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (memHandler != null && memUpdater != null) {
+            memHandler.removeCallbacks(memUpdater);
+        }
     }
 
     private void hideSystemUI() {

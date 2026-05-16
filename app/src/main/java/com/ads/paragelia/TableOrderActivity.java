@@ -1,7 +1,12 @@
 package com.ads.paragelia;
 
 import android.app.AlertDialog;
+import android.graphics.Color;
+import android.graphics.Typeface;
 import android.os.Bundle;
+import android.text.Layout;
+import android.util.Log;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -9,7 +14,13 @@ import android.widget.*;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.ads.paragelia.paroxos.EpsilonIntegrationHelper;
+import com.ads.paragelia.paroxos.SendResponse;
 import com.google.firebase.database.*;
+import com.zcs.sdk.print.PrnStrFormat;
+
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class TableOrderActivity extends BaseActivity {
@@ -27,19 +38,24 @@ public class TableOrderActivity extends BaseActivity {
     // Data
     private List<CartItem> cartItems = new ArrayList<>();         // items του τραπεζιού
     private List<String> categoryList = new ArrayList<>();
-    private Map<String, Map<String, Double>> productsByCategory = new HashMap<>();
+    private Map<String, List<ProductItem>> productsByCategory = new HashMap<>();
     private String currentCategory = "";
 
     // Adapters
     private CartAdapter cartAdapter;
     private CategoryAdapter categoryAdapter;
     private ProductAdapter productAdapter;
+    private String currentTableMark = "";
+    private String currentTableUid = "";
+    private String currentTableQrUrl = "";
+    private String currentTableFiscalTime = "";
+    private boolean hadExistingOrders = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_table_order);
-
+        showMemoryOverlay();
         tableNumber = getIntent().getStringExtra(EXTRA_TABLE_NUMBER);
         tvTableTitle = findViewById(R.id.tvTableTitle);
         rvCart = findViewById(R.id.rvCart);
@@ -49,9 +65,16 @@ public class TableOrderActivity extends BaseActivity {
         btnSaveChanges = findViewById(R.id.btnSaveChanges);
         tvCartTotal = findViewById(R.id.tvCartTotal);
 
+        // Στην onCreate() μετά τον ορισμό των views
+        Button btnFinishAndPrint86 = findViewById(R.id.btnFinishAndPrint86);
+        Button btnReportOpenTable = findViewById(R.id.btnReportOpenTable);
+
+        btnFinishAndPrint86.setOnClickListener(v -> finishOrderWith86Slip());
+        btnReportOpenTable.setOnClickListener(v -> showTableReportOptions());
+
         tvTableTitle.setText("Τραπέζι " + tableNumber);
-        activeBillsRef = FirebaseDatabase.getInstance().getReference("active_bills").child(tableNumber);
-        productsRef = FirebaseDatabase.getInstance().getReference("products");
+        activeBillsRef = FirebaseHelper.getReference("active_bills").child(tableNumber);
+        productsRef = FirebaseHelper.getReference("products");
 
         rvCart.setLayoutManager(new LinearLayoutManager(this));
         rvCategories.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
@@ -66,6 +89,292 @@ public class TableOrderActivity extends BaseActivity {
         btnViewFullOrder.setOnClickListener(v -> showFullOrderPopup());
         btnSaveChanges.setOnClickListener(v -> saveAllChanges());
     }
+
+    private void showTableReportOptions() {
+        String[] options = {"Προβολή στην Οθόνη", "Εκτύπωση Αναφοράς"};
+
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Αναφορά Τραπεζιού " + tableNumber)
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        showReportDialog(); // Προβολή παραθύρου
+                    } else {
+                        printTableReport(); // Εντολή εκτύπωσης
+                    }
+                })
+                .show();
+    }
+
+    private void showReportDialog() {
+        // Δημιουργία ενός ScrollView για να χωράει όλη η απόδειξη
+        ScrollView scrollView = new ScrollView(this);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(40, 40, 40, 40);
+        layout.setBackgroundColor(Color.WHITE);
+
+        // 1. Τίτλος και Στοιχεία Σημείου (Point of Service)
+        TextView tvTitle = new TextView(this);
+        tvTitle.setText("ΑΝΑΦΟΡΑ ΑΝΟΙΚΤΟΥ ΤΡΑΠΕΖΙΟΥ\n(ΔΕΛΤΙΟ ΠΑΡΑΓΓΕΛΙΑΣ 8.6)");
+        tvTitle.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        tvTitle.setTypeface(null, Typeface.BOLD);
+        tvTitle.setTextColor(Color.BLACK);
+        tvTitle.setTextSize(18);
+        layout.addView(tvTitle);
+
+        TextView tvTable = new TextView(this);
+        String displayTime = (currentTableFiscalTime != null && !currentTableFiscalTime.isEmpty())
+                ? currentTableFiscalTime
+                : new SimpleDateFormat("HH:mm:ss").format(new Date());
+
+        tvTable.setText("\nΤΡΑΠΕΖΙ: " + tableNumber + "\nΩΡΑ ΣΗΜΑΝΣΗΣ: " + displayTime);
+        tvTable.setTextColor(Color.BLACK);
+        layout.addView(tvTable);
+
+        // 2. Λίστα Προϊόντων με τιμές και ΦΠΑ
+        TextView tvItemsHeader = new TextView(this);
+        tvItemsHeader.setText("\nΠΕΡΙΓΡΑΦΗ          ΠΟΣ.    ΑΞΙΑ");
+        tvItemsHeader.setTypeface(Typeface.MONOSPACE);
+        layout.addView(tvItemsHeader);
+
+        double totalAmount = 0;
+        for (CartItem item : cartItems) {
+            String line = String.format(Locale.getDefault(), "%-18s %3d %7.2f€",
+                    item.name, item.quantity, item.price * item.quantity);
+            TextView tvItem = new TextView(this);
+            tvItem.setText(line);
+            tvItem.setTypeface(Typeface.MONOSPACE);
+            layout.addView(tvItem);
+            totalAmount += item.price * item.quantity;
+        }
+
+        // 3. Σύνολα Παραστατικού
+        TextView tvTotal = new TextView(this);
+        tvTotal.setText(String.format(Locale.getDefault(), "\nΣΥΝΟΛΟ: %.2f€", totalAmount));
+        tvTotal.setGravity(Gravity.END);
+        tvTotal.setTypeface(null, Typeface.BOLD);
+        tvTotal.setTextSize(20);
+        tvTotal.setTextColor(Color.BLACK);
+        layout.addView(tvTotal);
+
+        // 4. Φορολογικά Στοιχεία Παρόχου (MARK, UID)
+        // Τα τραβάμε από το πρώτο διαθέσιμο order slip που αποθηκεύσαμε στη Firebase
+        TextView tvFiscal = new TextView(this);
+        tvFiscal.setText("\n--- ΦΟΡΟΛΟΓΙΚΑ ΣΤΟΙΧΕΙΑ ΑΑΔΕ ---");
+        tvFiscal.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        tvFiscal.setTextSize(12);
+        layout.addView(tvFiscal);
+
+        // Εδώ εμφανίζουμε το MARK και το UID που λάβαμε από το Polling
+        TextView tvMark = new TextView(this);
+        // Αντικατάστησε με τη μεταβλητή που αποθηκεύει το MARK στο Activity σου
+        tvMark.setText("MARK: " + currentTableMark + "\nUID: " + currentTableUid);
+        tvMark.setTextSize(11);
+        layout.addView(tvMark);
+
+// 5. QR Code (Εμφάνιση κανονικής εικόνας QR)
+        TextView tvQrLabel = new TextView(this);
+        tvQrLabel.setText("\nΣάρωση για εγκυρότητα:");
+        tvQrLabel.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        tvQrLabel.setTextSize(12);
+        tvQrLabel.setTextColor(Color.BLACK);
+        layout.addView(tvQrLabel);
+
+        if (currentTableQrUrl != null && !currentTableQrUrl.isEmpty()) {
+            ImageView ivQr = new ImageView(this);
+            // Κεντράρισμα και μέγεθος εικόνας 400x400 pixels
+                LinearLayout.LayoutParams ivParams = new LinearLayout.LayoutParams(400, 400);
+            ivParams.gravity = Gravity.CENTER;
+            ivParams.topMargin = 16;
+            ivQr.setLayoutParams(ivParams);
+
+            try {
+                // Μετατροπή του URL σε Bitmap QR Code μέσω ZXing
+                com.google.zxing.common.BitMatrix bitMatrix = new com.google.zxing.MultiFormatWriter()
+                        .encode(currentTableQrUrl, com.google.zxing.BarcodeFormat.QR_CODE, 300, 300);
+
+                int width = bitMatrix.getWidth();
+                int height = bitMatrix.getHeight();
+                android.graphics.Bitmap bmp = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.RGB_565);
+
+                for (int x = 0; x < width; x++) {
+                    for (int y = 0; y < height; y++) {
+                        bmp.setPixel(x, y, bitMatrix.get(x, y) ? Color.BLACK : Color.WHITE);
+                    }
+                }
+                ivQr.setImageBitmap(bmp);
+                layout.addView(ivQr);
+            } catch (Exception e) {
+                // Fallback ασφαλείας: Αν κάτι πάει στραβά, δείχνει το URL
+                TextView tvQrFallback = new TextView(this);
+                tvQrFallback.setText(currentTableQrUrl);
+                tvQrFallback.setTextSize(10);
+                tvQrFallback.setTextColor(Color.BLUE);
+                tvQrFallback.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+                layout.addView(tvQrFallback);
+            }
+        } else {
+            TextView tvNoQr = new TextView(this);
+            tvNoQr.setText("(Το QR Code δεν είναι διαθέσιμο)");
+            tvNoQr.setTextSize(10);
+            tvNoQr.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+            layout.addView(tvNoQr);
+        }
+
+        scrollView.addView(layout);
+
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setView(scrollView)
+                .setPositiveButton("ΚΛΕΙΣΙΜΟ", null)
+                .setNeutralButton("ΕΚΤΥΠΩΣΗ", (d, w) -> printTableReport())
+                .show();
+    }
+
+    private void printOpenTableReport() {
+        DatabaseReference marksRef = FirebaseHelper.getReference("active_bills")
+                .child(tableNumber).child("epsilon_marks");
+        marksRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                if (!snapshot.exists()) {
+                    Toast.makeText(TableOrderActivity.this,
+                            "Δεν υπάρχουν αποθηκευμένα MARK", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                // Συλλέγουμε όλα τα MARK και QR URLs σε μια λίστα
+                List<Map<String, Object>> reportItems = new ArrayList<>();
+                for (DataSnapshot markSnap : snapshot.getChildren()) {
+                    Long mark = markSnap.child("mark").getValue(Long.class);
+                    String qrUrl = markSnap.child("qrUrl").getValue(String.class);
+                    // Δημιουργούμε ένα Map για κάθε εγγραφή
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("mark", mark);
+                    item.put("qrUrl", qrUrl);
+                    reportItems.add(item);
+                }
+
+                // Δημιουργία receipt για αποστολή στον εκτυπωτή
+                Map<String, Object> receiptData = new HashMap<>();
+                receiptData.put("tableNumber", tableNumber);
+                receiptData.put("type", "open_table_report");   // νέος τύπος
+                receiptData.put("marks", reportItems);
+                receiptData.put("timestamp", System.currentTimeMillis());
+
+                DatabaseReference receiptsRef = FirebaseHelper.getReference("receipts");
+                receiptsRef.child(tableNumber + "_report").setValue(receiptData)
+                        .addOnSuccessListener(aVoid ->
+                                Toast.makeText(TableOrderActivity.this,
+                                        "Η αναφορά στάλθηκε στον εκτυπωτή!", Toast.LENGTH_SHORT).show())
+                        .addOnFailureListener(e ->
+                                Toast.makeText(TableOrderActivity.this,
+                                        "Σφάλμα αποστολής: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Toast.makeText(TableOrderActivity.this,
+                        "Σφάλμα ανάγνωσης Firebase", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+
+    private void finishOrderWith86Slip() {
+        if (cartItems.isEmpty()) {
+            Toast.makeText(this, "Δεν υπάρχουν είδη", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        List<Map<String, Object>> itemsList = new ArrayList<>();
+        for (CartItem item : cartItems) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("name", item.name);
+            map.put("quantity", item.quantity);
+            map.put("price", item.price);
+            itemsList.add(map);
+        }
+
+        boolean isAlreadyOpen = currentTableMark != null && !currentTableMark.isEmpty();
+
+        EpsilonIntegrationHelper.sendOrderSlip86(this, tableNumber, itemsList, isAlreadyOpen,
+                new EpsilonIntegrationHelper.CallbackWithResult<SendResponse>() {
+                    @Override
+                    public void onSuccess(SendResponse result) {
+                        long mark = result.getMark();
+                        String uid = result.getUid() != null ? result.getUid() : "";
+                        String qrUrl = result.getQrCode() != null ? result.getQrCode() : "";
+
+                        DatabaseReference orderRef = FirebaseHelper.getReference("active_bills").child(tableNumber);
+
+                        // 1. Ενημέρωση συγκεντρωτικού last_fiscal_info
+                        Map<String, Object> lastFiscal = new HashMap<>();
+                        lastFiscal.put("mark", String.valueOf(mark));
+                        lastFiscal.put("uid", uid);
+                        lastFiscal.put("qr", qrUrl);
+                        lastFiscal.put("fiscal_time", new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date()));
+                        orderRef.child("last_fiscal_info").setValue(lastFiscal);
+
+                        // 2. Προσθήκη στο ιστορικό epsilon_marks
+                        DatabaseReference marksRef = orderRef.child("epsilon_marks").push();
+                        Map<String, Object> markData = new HashMap<>();
+                        markData.put("mark", mark);
+                        markData.put("uid", uid);
+                        markData.put("qrUrl", qrUrl);
+                        markData.put("timestamp", System.currentTimeMillis());
+                        marksRef.setValue(markData);
+
+                        // 3. Ενημέρωση κατάστασης στο current_order
+                        Map<String, Object> statusUpdate = new HashMap<>();
+                        statusUpdate.put("status", "printed");
+                        orderRef.child("current_order").updateChildren(statusUpdate);
+
+                        saveOrderToFirebase();
+
+                        Toast.makeText(TableOrderActivity.this,
+                                "Εκδόθηκε Δελτίο 8.6 με MARK: " + mark, Toast.LENGTH_LONG).show();
+                        finish();
+                    }
+
+                    @Override
+                    public void onError(String message) {
+                        Toast.makeText(TableOrderActivity.this, "Σφάλμα έκδοσης 8.6: " + message,
+                                Toast.LENGTH_LONG).show();
+                    }
+                });
+    }
+
+    private void saveOrderToFirebase() {
+        if (cartItems.isEmpty()) return;
+
+        // Δημιουργούμε το αντικείμενο της παραγγελίας
+        Map<String, Object> newOrder = new HashMap<>();
+        List<Map<String, Object>> itemsList = new ArrayList<>();
+        for (CartItem item : cartItems) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("name", item.name);
+            map.put("quantity", item.quantity);
+            map.put("price", item.price);
+            map.put("comment", item.comment);
+            itemsList.add(map);
+        }
+        newOrder.put("items", itemsList);
+        newOrder.put("timestamp", System.currentTimeMillis());
+        newOrder.put("tableNumber", Integer.parseInt(tableNumber));
+        newOrder.put("status", "pending");  // ή ό,τι κατάσταση θέλετε
+
+        // Δημιουργία νέου κλειδιού για την παραγγελία (π.χ. push key)
+        DatabaseReference orderRef = FirebaseHelper.getReference("orders");
+        String orderKey = orderRef.push().getKey();
+        if (orderKey != null) {
+            orderRef.child(orderKey).setValue(newOrder)
+                    .addOnSuccessListener(aVoid ->
+                            Log.d("TableOrder", "Η παραγγελία αποθηκεύτηκε με key: " + orderKey))
+                    .addOnFailureListener(e ->
+                            Log.e("TableOrder", "Σφάλμα αποθήκευσης παραγγελίας", e));
+        }
+    }
+
     private void updateTotal() {
         double total = 0;
         for (CartItem item : cartItems) total += item.price * item.quantity;
@@ -76,14 +385,38 @@ public class TableOrderActivity extends BaseActivity {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 cartItems.clear();
+                hadExistingOrders = false;
+
+                // --- 1. ΑΝΑΓΝΩΣΗ ΦΟΡΟΛΟΓΙΚΩΝ ΣΤΟΙΧΕΙΩΝ (MARK, UID, QR) ---
+                if (snapshot.hasChild("last_fiscal_info")) {
+                    DataSnapshot fiscalSnap = snapshot.child("last_fiscal_info");
+                    currentTableMark = fiscalSnap.child("mark").getValue(String.class);
+                    currentTableUid = fiscalSnap.child("uid").getValue(String.class);
+                    currentTableQrUrl = fiscalSnap.child("qr").getValue(String.class);
+                } else if (snapshot.hasChild("epsilon_marks")) {
+                    for (DataSnapshot markSnap : snapshot.child("epsilon_marks").getChildren()) {
+                        Object mVal = markSnap.child("mark").getValue();
+                        if (mVal != null) currentTableMark = String.valueOf(mVal);
+                        String uVal = markSnap.child("uid").getValue(String.class);
+                        if (uVal != null) currentTableUid = uVal;
+                        String qVal = markSnap.child("qrUrl").getValue(String.class);
+                        if (qVal != null) currentTableQrUrl = qVal;
+                    }
+                }
+
+                // --- 2. ΑΝΑΓΝΩΣΗ ΠΡΟΪΟΝΤΩΝ ---
                 for (DataSnapshot orderSnapshot : snapshot.getChildren()) {
+                    // Αγνόησε τα τεχνικά/φορολογικά πεδία
+                    if (orderSnapshot.getKey().equals("last_fiscal_info") ||
+                            orderSnapshot.getKey().equals("epsilon_marks") ||
+                            orderSnapshot.getKey().equals("current_order")) continue;
+
                     Map<String, Object> order = (Map<String, Object>) orderSnapshot.getValue();
                     if (order != null && order.get("items") instanceof List) {
                         List<Map<String, Object>> items = (List<Map<String, Object>>) order.get("items");
                         for (Map<String, Object> item : items) {
                             String name = (String) item.get("name");
 
-                            // Ασφαλής ανάγνωση quantity
                             Object qtyObj = item.get("quantity");
                             int quantity = 0;
                             if (qtyObj instanceof Long) {
@@ -92,7 +425,6 @@ public class TableOrderActivity extends BaseActivity {
                                 quantity = (Integer) qtyObj;
                             }
 
-                            // Ασφαλής ανάγνωση price
                             Object priceObj = item.get("price");
                             double price = 0.0;
                             if (priceObj instanceof Double) {
@@ -108,7 +440,14 @@ public class TableOrderActivity extends BaseActivity {
                         }
                     }
                 }
+
+                // Αν βρέθηκαν προηγούμενα είδη, το τραπέζι είναι σίγουρα ήδη ανοιχτό στην Epsilon
+                if (!cartItems.isEmpty()) {
+                    hadExistingOrders = true;
+                }
+
                 cartAdapter.notifyDataSetChanged();
+                updateTotal();
             }
 
             @Override
@@ -127,14 +466,36 @@ public class TableOrderActivity extends BaseActivity {
                 for (DataSnapshot catSnap : snapshot.getChildren()) {
                     String category = catSnap.getKey();
                     categoryList.add(category);
-                    Map<String, Double> productMap = new HashMap<>();
+                    List<ProductItem> productList = new ArrayList<>();
+
                     for (DataSnapshot prodSnap : catSnap.getChildren()) {
                         String productName = prodSnap.getKey();
-                        Double price = prodSnap.getValue(Double.class);
-                        if (price == null) price = 0.0;
-                        productMap.put(productName, price);
+                        double price = 0.0;
+                        double vatPercent = 13.0;
+
+                        Object value = prodSnap.getValue();
+                        if (value instanceof Map) {
+                            // Είναι σύνθετο αντικείμενο (name, price, vatPercent, ...)
+                            Map<String, Object> productObj = (Map<String, Object>) value;
+                            if (productObj.containsKey("name")) {
+                                productName = (String) productObj.get("name");
+                            }
+                            Object priceObj = productObj.get("price");
+                            if (priceObj instanceof Number) {
+                                price = ((Number) priceObj).doubleValue();
+                            }
+                            if (productObj.containsKey("vatPercent")) {
+                                Object vatObj = productObj.get("vatPercent");
+                                vatPercent = vatObj instanceof Number ? ((Number) vatObj).doubleValue() : 13.0;
+                            }
+                        } else if (value instanceof Number) {
+                            price = ((Number) value).doubleValue();
+                        } else {
+                            continue; // άγνωστη μορφή, αγνόησε
+                        }
+                        productList.add(new ProductItem(productName, price, vatPercent));
                     }
-                    productsByCategory.put(category, productMap);
+                    productsByCategory.put(category, productList);
                 }
                 if (!categoryList.isEmpty()) {
                     currentCategory = categoryList.get(0);
@@ -159,13 +520,9 @@ public class TableOrderActivity extends BaseActivity {
     }
 
     private void showProductsForCategory(String category) {
-        Map<String, Double> products = productsByCategory.get(category);
+        List<ProductItem> products = productsByCategory.get(category);
         if (products == null) return;
-        List<ProductItem> productList = new ArrayList<>();
-        for (Map.Entry<String, Double> entry : products.entrySet()) {
-            productList.add(new ProductItem(entry.getKey(), entry.getValue()));
-        }
-        productAdapter = new ProductAdapter(productList, this::addProductToCart);
+        productAdapter = new ProductAdapter(products, this::addProductToCart);
         rvProducts.setAdapter(productAdapter);
     }
 
@@ -209,9 +566,6 @@ public class TableOrderActivity extends BaseActivity {
     }
 
     private void saveAllChanges() {
-        // Αντικαθιστούμε όλο το active_bills/tableNumber με νέα δομή
-        // Κάθε orderId θα έχει ένα order object με items
-        // Εδώ απλά θα αποθηκεύσουμε έναν νέο order με id "merged_order"
         Map<String, Object> newOrder = new HashMap<>();
         List<Map<String, Object>> itemsList = new ArrayList<>();
         for (CartItem item : cartItems) {
@@ -225,13 +579,30 @@ public class TableOrderActivity extends BaseActivity {
         newOrder.put("items", itemsList);
         newOrder.put("timestamp", System.currentTimeMillis());
         newOrder.put("tableNumber", Integer.parseInt(tableNumber));
+        newOrder.put("status", "pending");
 
-        activeBillsRef.child("final_order").setValue(newOrder)
-                .addOnSuccessListener(aVoid -> {
-                    Toast.makeText(this, "Αποθηκεύτηκε", Toast.LENGTH_SHORT).show();
-                    finish();
-                })
-                .addOnFailureListener(e -> Toast.makeText(this, "Σφάλμα αποθήκευσης", Toast.LENGTH_SHORT).show());
+        // Καθαρίζουμε πρώτα τους παλιούς κόμβους ειδών για αποφυγή διπλασιασμού
+        activeBillsRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                for (DataSnapshot child : snapshot.getChildren()) {
+                    Object val = child.getValue();
+                    if (val instanceof Map && ((Map<?, ?>) val).containsKey("items")) {
+                        child.getRef().removeValue();
+                    }
+                }
+                // Αποθηκεύουμε την τελική καθαρή κατάσταση σε έναν κόμβο
+                activeBillsRef.child("current_order").setValue(newOrder)
+                        .addOnSuccessListener(aVoid -> {
+                            Toast.makeText(TableOrderActivity.this, "Αποθηκεύτηκε", Toast.LENGTH_SHORT).show();
+                            finish();
+                        })
+                        .addOnFailureListener(e -> Toast.makeText(TableOrderActivity.this, "Σφάλμα αποθήκευσης", Toast.LENGTH_SHORT).show());
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {}
+        });
     }
 
     // ---------- Adapter for Cart (with edit quantity & comment) ----------
@@ -355,5 +726,102 @@ public class TableOrderActivity extends BaseActivity {
             this.name = name; this.quantity = quantity; this.price = price; this.comment = comment; this.orderId = orderId;
         }
     }
-    static class ProductItem { String name; double price; ProductItem(String n, double p) { name=n; price=p; } }
+    static class ProductItem {
+        String name;
+        double price;
+        double vatPercent;
+        ProductItem(String n, double p, double v) { name=n; price=p; vatPercent=v; }
+    }
+    private void printTableReport() {
+        // Εκτέλεση σε background thread για να μην παγώσει το UI
+        new Thread(() -> {
+            com.zcs.sdk.DriverManager driverManager = com.zcs.sdk.DriverManager.getInstance();
+            com.zcs.sdk.Printer printer = driverManager.getPrinter();
+
+            if (printer == null) {
+                runOnUiThread(() -> Toast.makeText(TableOrderActivity.this, "Ο εκτυπωτής δεν είναι διαθέσιμος", Toast.LENGTH_SHORT).show());
+                return;
+            }
+
+            int printStatus = printer.getPrinterStatus();
+            if (printStatus != com.zcs.sdk.SdkResult.SDK_OK) {
+                runOnUiThread(() -> Toast.makeText(TableOrderActivity.this, "Σφάλμα εκτυπωτή: " + printStatus, Toast.LENGTH_SHORT).show());
+                return;
+            }
+
+            // 1. Τίτλος Παραστατικού
+            printText(printer, "ΑΝΑΦΟΡΑ ΑΝΟΙΚΤΟΥ ΤΡΑΠΕΖΙΟΥ", com.zcs.sdk.print.PrnTextStyle.BOLD, 24, android.text.Layout.Alignment.ALIGN_CENTER);
+            printText(printer, "(ΔΕΛΤΙΟ ΠΑΡΑΓΓΕΛΙΑΣ 8.6)", com.zcs.sdk.print.PrnTextStyle.NORMAL, 20, android.text.Layout.Alignment.ALIGN_CENTER);
+            printText(printer, "--------------------------------", com.zcs.sdk.print.PrnTextStyle.NORMAL, 20, android.text.Layout.Alignment.ALIGN_CENTER);
+
+            // 2. Στοιχεία Τραπεζιού & Ημερομηνία
+            String dateStr = new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(new java.util.Date());
+            printText(printer, "ΤΡΑΠΕΖΙ: " + tableNumber, com.zcs.sdk.print.PrnTextStyle.BOLD, 20, android.text.Layout.Alignment.ALIGN_NORMAL);
+            printText(printer, "ΗΜΕΡ/ΝΙΑ: " + dateStr, com.zcs.sdk.print.PrnTextStyle.NORMAL, 20, android.text.Layout.Alignment.ALIGN_NORMAL);
+            printText(printer, "--------------------------------", com.zcs.sdk.print.PrnTextStyle.NORMAL, 20, android.text.Layout.Alignment.ALIGN_CENTER);
+
+            // 3. Επικεφαλίδα Ειδών
+            printText(printer, "ΠΕΡΙΓΡΑΦΗ          ΠΟΣ.    ΑΞΙΑ", com.zcs.sdk.print.PrnTextStyle.BOLD, 18, android.text.Layout.Alignment.ALIGN_NORMAL);
+
+            // 4. Γραμμές Ειδών
+            double totalAmount = 0;
+            for (CartItem item : cartItems) {
+                double lineTotal = item.price * item.quantity;
+                totalAmount += lineTotal;
+
+                // Δημιουργία σταθερού πλάτους (monospaced αίσθηση) για 32 χαρακτήρες ανά γραμμή
+                String line = String.format(java.util.Locale.getDefault(), "%-18s %3d %7.2f€",
+                        item.name.length() > 18 ? item.name.substring(0, 18) : item.name,
+                        item.quantity,
+                        lineTotal);
+
+                printText(printer, line, com.zcs.sdk.print.PrnTextStyle.NORMAL, 18, android.text.Layout.Alignment.ALIGN_NORMAL);
+            }
+            printText(printer, "--------------------------------", com.zcs.sdk.print.PrnTextStyle.NORMAL, 20, android.text.Layout.Alignment.ALIGN_CENTER);
+
+            // 5. Σύνολο
+            String totalStr = String.format(java.util.Locale.getDefault(), "ΣΥΝΟΛΟ: %.2f€", totalAmount);
+            printText(printer, totalStr, com.zcs.sdk.print.PrnTextStyle.BOLD, 24, android.text.Layout.Alignment.ALIGN_OPPOSITE);
+            printText(printer, "--------------------------------", com.zcs.sdk.print.PrnTextStyle.NORMAL, 20, android.text.Layout.Alignment.ALIGN_CENTER);
+
+            // 6. Φορολογικά Στοιχεία Epsilon Digital / myDATA
+            printText(printer, "--- ΦΟΡΟΛΟΓΙΚΑ ΣΤΟΙΧΕΙΑ ΑΑΔΕ ---", com.zcs.sdk.print.PrnTextStyle.BOLD, 18, android.text.Layout.Alignment.ALIGN_CENTER);
+
+            // Έλεγχος και εκτύπωση ΜΑΡΚ/UID
+            String safeMark = (currentTableMark != null && !currentTableMark.isEmpty()) ? currentTableMark : "ΕΚΚΡΕΜΕΙ (IN PROGRESS)";
+            String safeUid = (currentTableUid != null && !currentTableUid.isEmpty()) ? currentTableUid : "-";
+
+            printText(printer, "MARK: " + safeMark, com.zcs.sdk.print.PrnTextStyle.NORMAL, 18, android.text.Layout.Alignment.ALIGN_NORMAL);
+            printText(printer, "UID: " + safeUid, com.zcs.sdk.print.PrnTextStyle.NORMAL, 16, android.text.Layout.Alignment.ALIGN_NORMAL);
+
+            // 7. Εκτύπωση του επίσημου QR Code της ΑΑΔΕ
+            if (currentTableQrUrl != null && !currentTableQrUrl.isEmpty()) {
+                printText(printer, " ", com.zcs.sdk.print.PrnTextStyle.NORMAL, 10, android.text.Layout.Alignment.ALIGN_CENTER);
+                // Εκτύπωση QR με πλάτος/ύψος 240 pixels, alignment center (1)
+                printer.setPrintAppendQRCode(currentTableQrUrl, 240, 240, android.text.Layout.Alignment.ALIGN_CENTER);
+            } else {
+                printText(printer, "(Το QR Code δεν είναι διαθέσιμο)", com.zcs.sdk.print.PrnTextStyle.NORMAL, 16, android.text.Layout.Alignment.ALIGN_CENTER);
+            }
+
+            // Κενός χώρος για κοπή του χαρτιού
+            printText(printer, " \n \n \n", com.zcs.sdk.print.PrnTextStyle.NORMAL, 20, android.text.Layout.Alignment.ALIGN_NORMAL);
+
+            // Εκκίνηση της φυσικής εκτύπωσης όλων των append buffer
+            int startRes = printer.setPrintStart();
+            if (startRes == com.zcs.sdk.SdkResult.SDK_OK) {
+                runOnUiThread(() -> Toast.makeText(TableOrderActivity.this, "Η εκτύπωση ολοκληρώθηκε", Toast.LENGTH_SHORT).show());
+            } else {
+                runOnUiThread(() -> Toast.makeText(TableOrderActivity.this, "Αποτυχία εκτύπωσης: " + startRes, Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+    }
+
+    // Βοηθητική μέθοδος για εύκολη προσθήκη κειμένου στον buffer του ZCS Printer
+    private void printText(com.zcs.sdk.Printer printer, String text, com.zcs.sdk.print.PrnTextStyle style, int textSize, android.text.Layout.Alignment align) {
+        com.zcs.sdk.print.PrnStrFormat format = new com.zcs.sdk.print.PrnStrFormat();
+        format.setTextSize(textSize);
+        format.setStyle(style);
+        format.setAli(align); // ΔΙΟΡΘΩΣΗ: setAli αντί για setAlign
+        printer.setPrintAppendString(text, format);
+    }
 }

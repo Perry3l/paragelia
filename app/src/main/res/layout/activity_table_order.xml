@@ -88,5 +88,20 @@
         android:text="Αποθήκευση αλλαγών"
         android:layout_marginTop="16dp"
         android:backgroundTint="#4CAF50" />
+    <Button
+        android:id="@+id/btnFinishAndPrint86"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Έκδοση Προσωρινής"
+        android:layout_marginTop="8dp"
+        android:backgroundTint="#FF9800" />
+
+    <Button
+        android:id="@+id/btnReportOpenTable"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Αναφορά Ανοικτού Τραπεζιού"
+        android:layout_marginTop="8dp"
+        android:backgroundTint="#2196F3" />
 
 </LinearLayout>

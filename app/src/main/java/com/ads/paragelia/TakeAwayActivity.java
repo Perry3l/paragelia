@@ -3,18 +3,16 @@ package com.ads.paragelia;
 import android.os.Bundle;
 import android.widget.Toast;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AppCompatActivity;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.MutableData;
 import com.google.firebase.database.Transaction;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-public class TakeAwayActivity extends AppCompatActivity {
+public class TakeAwayActivity extends BaseActivity {
 
     private DatabaseReference counterRef;
     private String currentOrderNumber;
@@ -23,8 +21,8 @@ public class TakeAwayActivity extends AppCompatActivity {
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_take_away);
-
-        counterRef = FirebaseDatabase.getInstance().getReference("daily_counter");
+        showMemoryOverlay();
+        counterRef = FirebaseHelper.getReference("daily_counter");
 
         fetchNextOrderNumber(orderNumber -> {
             currentOrderNumber = orderNumber;

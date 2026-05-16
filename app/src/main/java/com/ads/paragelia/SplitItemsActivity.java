@@ -15,9 +15,6 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
-
-import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -42,6 +39,7 @@ public class SplitItemsActivity extends BaseActivity {
         int quantity;
         double price;
         String comment;
+        double vatPercent;   // ΝΕΟ ΠΕΔΙΟ
 
         public OrderItem() {} // για Gson
 
@@ -50,6 +48,16 @@ public class SplitItemsActivity extends BaseActivity {
             this.quantity = quantity;
             this.price = price;
             this.comment = comment;
+            this.vatPercent = 13; // default
+        }
+
+        // Νέος constructor με vatPercent
+        public OrderItem(String name, int quantity, double price, String comment, double vatPercent) {
+            this.name = name;
+            this.quantity = quantity;
+            this.price = price;
+            this.comment = comment;
+            this.vatPercent = vatPercent;
         }
     }
 
@@ -59,12 +67,14 @@ public class SplitItemsActivity extends BaseActivity {
         int selectedQty;
         double unitPrice;
         String comment;
+        double vatPercent;   // ΝΕΟ ΠΕΔΙΟ
 
-        SplitItem(String name, int qty, double price, String comment) {
+        SplitItem(String name, int qty, double price, String comment, double vatPercent) {
             this.name = name;
             this.originalQty = qty;
             this.unitPrice = price;
             this.comment = comment;
+            this.vatPercent = vatPercent;
             this.selectedQty = 0;
         }
 
@@ -78,9 +88,13 @@ public class SplitItemsActivity extends BaseActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_split_items);
-
+        showMemoryOverlay();
         tableNumber = getIntent().getStringExtra("table_number");
-        String tableDataJson = getIntent().getStringExtra("table_data_json");
+        Map<String, Object> tableData = CurrentTableHolder.getTableData();
+        if (tableData != null) {
+            parseItemsFromTableData(tableData);
+            CurrentTableHolder.clear(); // καθαρισμός για να μην κρατάμε άσκοπα δεδομένα
+        }
 
         tvTableInfo = findViewById(R.id.tvTableInfo);
         tvRemainingTotal = findViewById(R.id.tvRemainingTotal);
@@ -93,8 +107,6 @@ public class SplitItemsActivity extends BaseActivity {
 
         tvTableInfo.setText("Τραπέζι " + tableNumber + " - Διαχωρισμός");
 
-        // Μετατροπή JSON σε λίστα ειδών
-        parseItemsFromJson(tableDataJson);
 
         adapter = new SplitItemsAdapter(items, this::updateTotals);
         rvItems.setLayoutManager(new LinearLayoutManager(this));
@@ -106,12 +118,7 @@ public class SplitItemsActivity extends BaseActivity {
         btnFinish.setOnClickListener(v -> finishAndReturn());
     }
 
-    private void parseItemsFromJson(String json) {
-        // Το json περιέχει το Map<String, Object> tableData
-        Gson gson = new Gson();
-        Type mapType = new TypeToken<Map<String, Object>>(){}.getType();
-        Map<String, Object> tableData = gson.fromJson(json, mapType);
-
+    private void parseItemsFromTableData(Map<String, Object> tableData) {
         if (tableData == null) return;
 
         List<OrderItem> allItems = new ArrayList<>();
@@ -131,28 +138,32 @@ public class SplitItemsActivity extends BaseActivity {
                         String comment = (String) itemMap.get("comment");
                         if (comment == null) comment = "";
 
-                        allItems.add(new OrderItem(name, qty, price, comment));
+                        double vatPercent = 13.0;
+                        if (itemMap.containsKey("vatPercent")) {
+                            vatPercent = ((Number) itemMap.get("vatPercent")).doubleValue();
+                        }
+
+                        allItems.add(new OrderItem(name, qty, price, comment, vatPercent));
                     }
                 }
             }
         }
 
-        // Συγχώνευση ίδιων ειδών (αν υπάρχουν πολλαπλές εγγραφές)
+        // Συγχώνευση ίδιων ειδών
         for (OrderItem oi : allItems) {
             boolean found = false;
             for (SplitItem si : items) {
-                if (si.name.equals(oi.name) && si.comment.equals(oi.comment)) {
+                if (si.name.equals(oi.name) && si.comment.equals(oi.comment) && si.vatPercent == oi.vatPercent) {
                     si.originalQty += oi.quantity;
                     found = true;
                     break;
                 }
             }
             if (!found) {
-                items.add(new SplitItem(oi.name, oi.quantity, oi.price, oi.comment));
+                items.add(new SplitItem(oi.name, oi.quantity, oi.price, oi.comment, oi.vatPercent));
             }
         }
 
-        // Υπολογισμός αρχικού συνολικού ποσού
         totalRemaining = 0;
         for (SplitItem si : items) {
             totalRemaining += si.originalQty * si.unitPrice;
@@ -174,7 +185,8 @@ public class SplitItemsActivity extends BaseActivity {
 
         for (SplitItem si : items) {
             if (si.selectedQty > 0) {
-                part.add(new OrderItem(si.name, si.selectedQty, si.unitPrice, si.comment));
+                // Προσθήκη του vatPercent στο OrderItem
+                part.add(new OrderItem(si.name, si.selectedQty, si.unitPrice, si.comment, si.vatPercent));
                 partTotal += si.selectedQty * si.unitPrice;
             }
         }

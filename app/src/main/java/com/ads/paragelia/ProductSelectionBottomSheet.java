@@ -5,8 +5,11 @@ import static android.content.Context.MODE_PRIVATE;
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.LayoutInflater;
@@ -22,9 +25,14 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.ads.paragelia.paroxos.EpsilonIntegrationHelper;
+import com.ads.paragelia.paroxos.SendResponse;
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment;
 import com.google.android.material.tabs.TabLayout;
 import com.google.firebase.database.*;
+
+import java.text.SimpleDateFormat;
 import java.util.*;
 import android.content.Context;
 import android.view.MotionEvent;
@@ -48,6 +56,14 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
     private String currentCategory;
     private DatabaseReference tableRef;
     private EditText etSearch;
+    private Handler searchHandler = new Handler(Looper.getMainLooper());
+    private Runnable searchRunnable;
+    private boolean isSubmitting = false;
+    private boolean isTableAlreadyOpen = false;
+    private boolean isDelivery() {
+        return tableNumber.startsWith("DL-");
+    }
+
 
     public static ProductSelectionBottomSheet newInstance(String tableNumber) {
         ProductSelectionBottomSheet fragment = new ProductSelectionBottomSheet();
@@ -68,7 +84,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         tableNumber = getArguments().getString(ARG_TABLE_NUMBER);
-        productsRef = FirebaseDatabase.getInstance().getReference("products");
+        productsRef = FirebaseHelper.getReference("products");
         tableRef = getOrderRef();
         tabCategories = view.findViewById(R.id.tabCategories);
         rvProducts = view.findViewById(R.id.rvProducts);
@@ -78,19 +94,28 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         etSearch = view.findViewById(R.id.etSearch);
 
         etSearch.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {
-                applyFilter(s.toString());
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (searchRunnable != null) {
+                    searchHandler.removeCallbacks(searchRunnable);
+                }
+                searchRunnable = () -> applyFilter(s.toString());
+                searchHandler.postDelayed(searchRunnable, 300);
             }
-
-            @Override
-            public void afterTextChanged(Editable s) {}
+            @Override public void afterTextChanged(Editable s) {}
         });
-        btnSubmitOnly.setOnClickListener(v -> submitOrder(false));
-        btnSubmitAndPrint.setOnClickListener(v -> submitOrder(true));
+
+        btnSubmitOnly.setOnClickListener(v -> {
+            if (!isSubmitting) {
+                submitOrder(false);
+            }
+        });
+
+        btnSubmitAndPrint.setOnClickListener(v -> {
+            if (!isSubmitting) {
+                submitOrder(true);
+            }
+        });
         rvProducts.setLayoutManager(new LinearLayoutManager(getContext()));
         rvSelectedItems.setLayoutManager(new LinearLayoutManager(getContext(), LinearLayoutManager.HORIZONTAL, false));
 
@@ -146,7 +171,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             }
             return false;
         });
-     }
+    }
     private void showOrderPreview() {
         if (selectedItems.isEmpty()) {
             Toast.makeText(getContext(), "Το καλάθι είναι άδειο", Toast.LENGTH_SHORT).show();
@@ -198,6 +223,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                         // Μέσα στο for (DataSnapshot prodSnap : catSnap.getChildren())
                         String productName = prodSnap.getKey();
                         double price = 0.0;
+                        double vatPercent = 13.0; // μεταβλητή εκτός if-else
                         List<Ingredient> ingredients = new ArrayList<>();
                         List<Addon> addons = new ArrayList<>();
 
@@ -210,6 +236,11 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                             Object priceObj = productObj.get("price");
                             if (priceObj instanceof Number) {
                                 price = ((Number) priceObj).doubleValue();
+                            }
+                            // Ανάγνωση vatPercent
+                            if (productObj.containsKey("vatPercent")) {
+                                Object vatObj = productObj.get("vatPercent");
+                                vatPercent = vatObj instanceof Number ? ((Number) vatObj).doubleValue() : 13.0;
                             }
                             // Ανάγνωση συστατικών
                             Object ingredientsObj = productObj.get("ingredients");
@@ -252,7 +283,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                             continue;
                         }
 
-                        ProductItem item = new ProductItem(productName, price, ingredients, addons);
+                        ProductItem item = new ProductItem(productName, price, vatPercent, ingredients, addons);
                         productList.add(item);
                         allProducts.add(item);
                     }
@@ -265,18 +296,20 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                     showProductsForCategory(currentCategory);
                 }
 
-// Αποθήκευση στην cache
+                // Αποθήκευση στην cache
                 Map<String, Object> cacheMap = new HashMap<>();
                 for (DataSnapshot catSnap : snapshot.getChildren()) {
                     cacheMap.put(catSnap.getKey(), catSnap.getValue());
                 }
-                MenuCache.saveProducts(getContext(), cacheMap);
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {}
         });
     }
+
+
+
     private void setupTabs() {
         for (String cat : categoryList) {
             tabCategories.addTab(tabCategories.newTab().setText(cat));
@@ -292,7 +325,12 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         });
     }
     private void addProductQuick(ProductItem product) {
-        addProductToCart(product, 1, "");
+        if (product.variants.isEmpty()) {
+            addProductToCart(product, null, product.price, 1, "");
+        } else {
+            Variant first = product.variants.get(0);
+            addProductToCart(product, first.name, first.price, 1, "");
+        }
     }
     private void showProductsForCategory(String category) {
         List<ProductItem> products = productsByCategoryFull.get(category);
@@ -320,18 +358,54 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
     }
 
     private void addProduct(ProductItem product) {
-        if (!product.ingredients.isEmpty()) {
-            showIngredientsRemovalDialog(product);
-        } else if (!product.addons.isEmpty()) {
-            showAddonsSelectionDialog(product);
-        } else {
-            showQuantityCommentDialog(product, new ArrayList<>(), new ArrayList<>());
+        showVariantSelectionDialog(product);
+    }
+
+
+
+    private void showIngredientsRemovalDialog(ProductItem product, String variantName, double variantPrice) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
+        builder.setTitle("Αφαίρεση συστατικών - " + product.name);
+
+        LinearLayout layout = new LinearLayout(getContext());
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(40, 20, 40, 20);
+
+        List<Ingredient> ingredients = product.ingredients;
+        CheckBox[] checkBoxes = new CheckBox[ingredients.size()];
+
+        for (int i = 0; i < ingredients.size(); i++) {
+            Ingredient ing = ingredients.get(i);
+            CheckBox cb = new CheckBox(getContext());
+            cb.setText(ing.name);
+            cb.setChecked(true);
+            layout.addView(cb);
+            checkBoxes[i] = cb;
         }
+
+        builder.setView(layout);
+        builder.setPositiveButton("Συνέχεια", (dialog, which) -> {
+            List<Ingredient> removed = new ArrayList<>();
+            for (int i = 0; i < checkBoxes.length; i++) {
+                if (!checkBoxes[i].isChecked()) {
+                    removed.add(ingredients.get(i));
+                }
+            }
+            if (!product.addons.isEmpty()) {
+                showAddonsSelectionDialog(product, variantName, variantPrice, removed);
+            } else {
+                showQuantityCommentDialog(product, variantName, variantPrice, removed, new ArrayList<>());
+            }
+        });
+        builder.setNegativeButton("Ακύρωση", null);
+        builder.show();
     }
-    private void showAddonsSelectionDialog(ProductItem product) {
-        showAddonsSelectionDialog(product, new ArrayList<>());
+
+    private void showAddonsSelectionDialog(ProductItem product, String variantName, double variantPrice) {
+        showAddonsSelectionDialog(product, variantName, variantPrice, new ArrayList<>());
     }
-    private void showAddonsSelectionDialog(ProductItem product, List<Ingredient> removedIngredients) {
+
+    private void showAddonsSelectionDialog(ProductItem product, String variantName, double variantPrice, List<Ingredient> removedIngredients) {
         AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
         builder.setTitle("Έξτρα υλικά - " + product.name);
 
@@ -360,54 +434,13 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                     selectedAddons.add(addons.get(i));
                 }
             }
-            showQuantityCommentDialog(product, removedIngredients, selectedAddons);
+            showQuantityCommentDialog(product, variantName, variantPrice, removedIngredients, selectedAddons);
         });
         builder.setNegativeButton("Ακύρωση", null);
         builder.show();
     }
-    private void showIngredientsRemovalDialog(ProductItem product) {
-        showIngredientsRemovalDialog(product, new ArrayList<>());
-    }
 
-    private void showIngredientsRemovalDialog(ProductItem product, List<Addon> selectedAddons) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
-        builder.setTitle("Αφαίρεση συστατικών - " + product.name);
-
-        LinearLayout layout = new LinearLayout(getContext());
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(40, 20, 40, 20);
-
-        List<Ingredient> ingredients = product.ingredients;
-        CheckBox[] checkBoxes = new CheckBox[ingredients.size()];
-
-        for (int i = 0; i < ingredients.size(); i++) {
-            Ingredient ing = ingredients.get(i);
-            CheckBox cb = new CheckBox(getContext());
-            cb.setText(ing.name);
-            cb.setChecked(true);  // προεπιλεγμένο – σημαίνει ότι ΔΕΝ έχει αφαιρεθεί
-            layout.addView(cb);
-            checkBoxes[i] = cb;
-        }
-
-        builder.setView(layout);
-        builder.setPositiveButton("Συνέχεια", (dialog, which) -> {
-            List<Ingredient> removed = new ArrayList<>();
-            for (int i = 0; i < checkBoxes.length; i++) {
-                if (!checkBoxes[i].isChecked()) {
-                    removed.add(ingredients.get(i));
-                }
-            }
-            // Αν το προϊόν έχει και addons, πηγαίνουμε στο dialog επιλογής τους
-            if (!product.addons.isEmpty()) {
-                showAddonsSelectionDialog(product, removed);
-            } else {
-                showQuantityCommentDialog(product, removed, selectedAddons);
-            }
-        });
-        builder.setNegativeButton("Ακύρωση", null);
-        builder.show();
-    }
-    private void showQuantityCommentDialog(ProductItem product, List<Ingredient> removedIngredients, List<Addon> selectedAddons) {
+    private void showQuantityCommentDialog(ProductItem product, String variantName, double variantPrice, List<Ingredient> removedIngredients, List<Addon> selectedAddons) {
         AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
         builder.setTitle("Προσθήκη: " + product.name);
 
@@ -439,10 +472,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         }
 
         builder.setView(dialogView);
-        double finalBasePrice = product.price;
-        double extraTotal = 0;
-        for (Addon add : selectedAddons) extraTotal += add.price;
-        double finalPrice = finalBasePrice + extraTotal;
+        double finalPrice = variantPrice + selectedAddons.stream().mapToDouble(a -> a.price).sum();
 
         builder.setPositiveButton("Προσθήκη", (dialog, which) -> {
             String qtyStr = etQuantity.getText().toString().trim();
@@ -470,17 +500,19 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                     fullComment.append(selectedAddons.get(i).name);
                 }
             }
-
-            ProductItem finalProduct = new ProductItem(product.name, finalPrice);
-            addProductToCart(finalProduct, quantity, fullComment.toString());
+            addProductToCart(product, variantName, finalPrice, quantity, fullComment.toString());
         });
         builder.setNegativeButton("Ακύρωση", null);
         builder.show();
     }
-    private void addProductToCart(ProductItem product, int quantity, String comment) {
+    private void addProductToCart(ProductItem product, String variantName, double finalPrice, int quantity, String comment) {
+        String displayName = product.name;
+        if (variantName != null && !variantName.isEmpty()) {
+            displayName = product.name + " (" + variantName + ")";
+        }
         boolean found = false;
         for (OrderItem item : selectedItems) {
-            if (item.name.equals(product.name) &&
+            if (item.name.equals(displayName) &&
                     ((item.comment == null && comment.isEmpty()) ||
                             (item.comment != null && item.comment.equals(comment)))) {
                 item.quantity += quantity;
@@ -489,128 +521,284 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             }
         }
         if (!found) {
-            selectedItems.add(new OrderItem(product.name, quantity, product.price, comment));
+            selectedItems.add(new OrderItem(displayName, quantity, finalPrice, comment, product.vatPercent, product.category));
         }
         selectedAdapter.notifyDataSetChanged();
-        updateFirebaseOrder();
-        Toast.makeText(getContext(), "Προστέθηκε: " + product.name, Toast.LENGTH_SHORT).show();
+        Toast.makeText(getContext(), "Προστέθηκε: " + displayName, Toast.LENGTH_SHORT).show();
         updateButtonsState();
     }
-    private void addProductWithComment(ProductItem product, int quantity, String comment) {
-        boolean found = false;
-        for (OrderItem item : selectedItems) {
-            // Έλεγχος ίδιου ονόματος και ίδιου σχολίου
-            if (item.name.equals(product.name) &&
-                    ((item.comment == null && comment.isEmpty()) ||
-                            (item.comment != null && item.comment.equals(comment)))) {
-                item.quantity += quantity;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            selectedItems.add(new OrderItem(product.name, quantity, product.price, comment));
-        }
-        selectedAdapter.notifyDataSetChanged();
-        updateFirebaseOrder();
-        Toast.makeText(getContext(), "Προστέθηκε: " + product.name, Toast.LENGTH_SHORT).show();
-    }
+
     private void submitOrder(boolean printReceipt) {
+        if (isSubmitting) return;
+        isSubmitting = true;
+
+        btnSubmitOnly.setEnabled(false);
+        btnSubmitAndPrint.setEnabled(false);
+
         if (selectedItems.isEmpty()) {
             Toast.makeText(getContext(), "Δεν προστέθηκε κανένα προϊόν", Toast.LENGTH_SHORT).show();
+            resetButtons();
             return;
         }
 
-        List<Map<String, Object>> itemsList = new ArrayList<>();
+        // 1. Ομαδοποίηση items ανά printerTarget (από την κατηγορία τους)
+        Map<String, List<OrderItem>> itemsByTarget = new HashMap<>();
         for (OrderItem item : selectedItems) {
-            Map<String, Object> map = new HashMap<>();
-            map.put("name", item.name);
-            map.put("quantity", item.quantity);
-            map.put("price", item.price);
-            map.put("comment", item.comment);
-            itemsList.add(map);
+            String target = "RECEIPT";
+            if (item.category != null) {
+                target = MenuRepository.getInstance().getCategoryPrinterTarget(item.category);
+            }
+            itemsByTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(item);
         }
+
+        // 2. Για κάθε target, ξεχωριστή ροή
+        for (Map.Entry<String, List<OrderItem>> entry : itemsByTarget.entrySet()) {
+            String target = entry.getKey();
+            List<OrderItem> itemsForTarget = entry.getValue();
+
+            List<Map<String, Object>> itemsMap = new ArrayList<>();
+            for (OrderItem item : itemsForTarget) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("name", item.name);
+                map.put("quantity", item.quantity);
+                map.put("price", item.price);
+                map.put("comment", item.comment);
+                map.put("vatPercent", item.vatPercent);
+                itemsMap.add(map);
+            }
+
+            // Αποστολή στην ΑΑΔΕ μόνο για RECEIPT και dine-in
+            if (target.equals("RECEIPT") && !isTakeAway() && !isDelivery()) {
+                // Χρησιμοποιούμε την υπάρχουσα saveToFirebaseAndFinish (θα την τροποποιήσουμε παρακάτω)
+                saveToFirebaseAndFinish(itemsMap, printReceipt, null, target);
+            } else {
+                // KITCHEN, BAR, TAKEAWAY, DELIVERY → απευθείας εκτύπωση χωρίς Epsilon
+                saveReceiptDirect(itemsMap, target);
+            }
+        }
+
+        dismiss();
+    }
+
+    private void saveReceiptDirect(List<Map<String, Object>> items, String target) {
+        DatabaseReference receiptsRef = FirebaseHelper.getReference("receipts");
+        String receiptId = receiptsRef.push().getKey();
+        Map<String, Object> receiptData = new HashMap<>();
+        receiptData.put("tableNumber", tableNumber);
+        receiptData.put("items", items);
+        receiptData.put("timestamp", System.currentTimeMillis());
+        receiptData.put("type", "order");
+        receiptData.put("target", target);   // κρίσιμο για τον PrinterActivity
+        if (receiptId != null) {
+            receiptsRef.child(receiptId).setValue(receiptData);
+        }
+    }
+
+    private void saveToFirebaseAndFinish(List<Map<String, Object>> items, boolean printReceipt, @Nullable SendResponse epsilonResponse, String target) {
+        DatabaseReference orderRef = getOrderRef(); // Δείχνει στο active_bills/tableNumber (ή αντίστοιχα takeaway/delivery)
+        String orderId = orderRef.push().getKey();
 
         Map<String, Object> orderUpdate = new HashMap<>();
-        orderUpdate.put("items", itemsList);
+        orderUpdate.put("items", items);
         orderUpdate.put("timestamp", System.currentTimeMillis());
 
-        if (isTakeAway()) {
-            orderUpdate.put("orderNumber", tableNumber);
-        } else {
-            orderUpdate.put("tableNumber", Integer.parseInt(tableNumber));
+        // Ορίζουμε αν η παραγγελία διαβιβάστηκε στην ΑΑΔΕ
+        boolean isPassedToAade = (epsilonResponse != null);
+        orderUpdate.put("status", isPassedToAade ? "printed" : "ordered");
+
+        if (isPassedToAade) {
+            long mark = epsilonResponse.getMark();
+            String uid = epsilonResponse.getUid() != null ? epsilonResponse.getUid() : "";
+            String qr = epsilonResponse.getQrCode() != null ? epsilonResponse.getQrCode() : "";
+
+            // 1. Αποθήκευση στοιχείων μέσα στη συγκεκριμένη παραγγελία
+            orderUpdate.put("epsilon_86_mark", String.valueOf(mark));
+            orderUpdate.put("epsilon_86_uid", uid);
+            orderUpdate.put("epsilon_86_qr", qr);
+            if (epsilonResponse.getExternalSystemId() != null) {
+                orderUpdate.put("epsilon_86_extId", epsilonResponse.getExternalSystemId());
+            }
+
+            // 2. Ενημέρωση του άμεσου last_fiscal_info
+            Map<String, Object> lastFiscal = new HashMap<>();
+            lastFiscal.put("mark", String.valueOf(mark));
+            lastFiscal.put("uid", uid);
+            lastFiscal.put("qr", qr);
+            lastFiscal.put("fiscal_time", new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date()));
+            orderRef.child("last_fiscal_info").setValue(lastFiscal);
+
+            // 3. Συγχρονισμός με το ιστορικό epsilon_marks του τραπεζιού
+            DatabaseReference marksRef = orderRef.child("epsilon_marks").push();
+            Map<String, Object> markData = new HashMap<>();
+            markData.put("mark", mark);
+            markData.put("uid", uid);
+            markData.put("qrUrl", qr);
+            markData.put("timestamp", System.currentTimeMillis());
+            marksRef.setValue(markData);
         }
 
-        // Το status εξαρτάται από το κουμπί (για να έχουμε πορτοκαλί ή λευκό)
-        String status = printReceipt ? "printed" : "ordered";
-        orderUpdate.put("status", status);
-
-        tableRef.child("current_order").setValue(orderUpdate)
+        orderRef.child(orderId != null ? orderId : "temp").setValue(orderUpdate)
                 .addOnSuccessListener(aVoid -> {
-                    String details = buildOrderSummary(selectedItems);
-                    saveToHistory(HistoryEntry.TYPE_ORDER_COMPLETED, tableNumber, 0.0, null, details);
+                    if (printReceipt) {
+                        sendToPrinter(tableNumber, items, target);
+                    }
 
-                    // ΠΑΝΤΑ εκτύπωση (ανεξάρτητα από το κουμπί)
-                    sendToPrinter(tableNumber, itemsList);
-                    Toast.makeText(getContext(), "Η παραγγελία στάλθηκε και εκτυπώνεται!", Toast.LENGTH_SHORT).show();
+                    // Ακαριαία ενημέρωση του status στον κόμβο current_order για το σωστό χρώμα στο ActiveTablesActivity
+                    Map<String, Object> statusUpdate = new HashMap<>();
+                    statusUpdate.put("status", isPassedToAade ? "printed" : "ordered");
+                    orderRef.child("current_order").updateChildren(statusUpdate);
 
                     dismiss();
                 })
                 .addOnFailureListener(e -> {
-                    Toast.makeText(getContext(), "Σφάλμα αποθήκευσης: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    resetButtons();
+                    Toast.makeText(getContext(), "Σφάλμα βάσης: " + e.getMessage(), Toast.LENGTH_SHORT).show();
                 });
     }
 
-    private void sendToPrinter(String tableNumber, List<Map<String, Object>> items) {
+    private void resetButtons() {
+        isSubmitting = false;
+        btnSubmitOnly.setEnabled(true);
+        btnSubmitAndPrint.setEnabled(true);
+    }
+
+    // Βοηθητική μέθοδος για το σωστό κλείσιμο και εκτύπωση
+    private void checkAndFinish(int current, int total, List<Map<String, Object>> items, boolean printReceipt) {
+        if (current == total) {
+            String details = buildOrderSummary(selectedItems);
+            saveToHistory(HistoryEntry.TYPE_ORDER_COMPLETED, tableNumber, 0.0, null, details);
+
+            if (printReceipt) {
+                sendToPrinter(tableNumber, items, "RECEIPT");
+            }
+
+            if (isDelivery()) {
+                Intent intent = new Intent(getContext(), CustomerInfoActivity.class);
+                intent.putExtra("order_id", tableNumber);
+                startActivity(intent);
+            }
+            dismiss();
+        }
+    }
+
+    private void showVariantSelectionDialog(ProductItem product) {
+        if (product.variants.isEmpty()) {
+            // Χωρίς παραλλαγές – χρησιμοποίησε την κανονική τιμή
+            if (!product.ingredients.isEmpty()) {
+                showIngredientsRemovalDialog(product, null, product.price);
+            } else if (!product.addons.isEmpty()) {
+                showAddonsSelectionDialog(product, null, product.price);
+            } else {
+                showQuantityCommentDialog(product, null, product.price, new ArrayList<>(), new ArrayList<>());
+            }
+            return;
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
+        builder.setTitle("Επιλογή μεγέθους / τύπου - " + product.name);
+        String[] variantNames = new String[product.variants.size()];
+        for (int i = 0; i < product.variants.size(); i++) {
+            Variant v = product.variants.get(i);
+            variantNames[i] = v.name + " - €" + String.format("%.2f", v.price);
+        }
+        builder.setItems(variantNames, (dialog, which) -> {
+            Variant selected = product.variants.get(which);
+            if (!product.ingredients.isEmpty()) {
+                showIngredientsRemovalDialog(product, selected.name, selected.price);
+            } else if (!product.addons.isEmpty()) {
+                showAddonsSelectionDialog(product, selected.name, selected.price);
+            } else {
+                showQuantityCommentDialog(product, selected.name, selected.price, new ArrayList<>(), new ArrayList<>());
+            }
+        });
+        builder.setNegativeButton("Ακύρωση", null);
+        builder.show();
+    }
+
+    private void sendToPrinter(String tableNumber, List<Map<String, Object>> items, String target) {
         // Δημιουργούμε ένα αντικείμενο receipt με τα απαραίτητα δεδομένα
         Map<String, Object> receiptData = new HashMap<>();
         receiptData.put("tableNumber", tableNumber);
         receiptData.put("items", items);
         receiptData.put("timestamp", System.currentTimeMillis());
-        receiptData.put("type", "temporary"); // προσωρινή απόδειξη
+        receiptData.put("type", "temporary");
+        receiptData.put("target", target);
 
-        DatabaseReference receiptsRef = FirebaseDatabase.getInstance().getReference("receipts");
+        DatabaseReference receiptsRef = FirebaseHelper.getReference("receipts");
         receiptsRef.child(tableNumber).setValue(receiptData);
     }
     // ----- Adapters -----
     static class ProductItem {
         String name;
         double price;
+        double vatPercent;
+        public String category;
         List<Ingredient> ingredients;
         List<Addon> addons;
+        List<Variant> variants;   // ΝΕΟ
 
         ProductItem(String n, double p) {
-            this.name = n;
-            this.price = p;
+            this.name = n; this.price = p;
+            this.vatPercent = 13;
             this.ingredients = new ArrayList<>();
             this.addons = new ArrayList<>();
+            this.variants = new ArrayList<>();   // ΝΕΟ
         }
 
         ProductItem(String n, double p, List<Ingredient> ingredients, List<Addon> addons) {
-            this.name = n;
-            this.price = p;
+            this.name = n; this.price = p;
+            this.vatPercent = 13;
             this.ingredients = ingredients;
             this.addons = addons;
+            this.variants = new ArrayList<>();   // ΝΕΟ
+        }
+
+        ProductItem(String n, double p, double vat, List<Ingredient> ings, List<Addon> adds) {
+            this.name = n; this.price = p;
+            this.vatPercent = vat;
+            this.ingredients = ings;
+            this.addons = adds;
+            this.variants = new ArrayList<>();   // ΝΕΟ
+        }
+    }
+
+    // ΝΕΟ: κλάση Variant
+    static class Variant {
+        String name;
+        double price;
+        Variant(String name, double price) {
+            this.name = name;
+            this.price = price;
         }
     }
     static class OrderItem {
         String name;
         int quantity;
         double price;
-        String comment;  // προσθήκη
+        String comment;
+        double vatPercent;
+        public String category;   // προσθήκη
 
         OrderItem(String n, int q, double p) {
-            this.name = n;
-            this.quantity = q;
-            this.price = p;
-            this.comment = ""; // default κενό
+            this.name = n; this.quantity = q; this.price = p;
+            this.comment = ""; this.vatPercent = 13;
         }
 
         OrderItem(String n, int q, double p, String c) {
-            this.name = n;
-            this.quantity = q;
-            this.price = p;
-            this.comment = c;
+            this.name = n; this.quantity = q; this.price = p;
+            this.comment = c; this.vatPercent = 13;
+        }
+
+        OrderItem(String n, int q, double p, String c, double vat) {
+            this.name = n; this.quantity = q; this.price = p;
+            this.comment = c; this.vatPercent = vat;
+        }
+
+        // Προσθήκη νέου constructor που δέχεται και category
+        OrderItem(String n, int q, double p, String c, double vat, String category) {
+            this.name = n; this.quantity = q; this.price = p;
+            this.comment = c; this.vatPercent = vat;
+            this.category = category;
         }
     }
     static class ProductAdapter extends RecyclerView.Adapter<ProductAdapter.ViewHolder> {
@@ -646,7 +834,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             // Παρατεταμένο πάτημα → γρήγορη προσθήκη με 1 τεμάχιο
             holder.itemView.setOnLongClickListener(v -> {
                 parent.addProductQuick(p);
-                return true; // καταναλώνουμε το event
+                return true;
             });
         }
 
@@ -690,13 +878,11 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
             OrderItem item = items.get(position);
 
-            // --- ΕΔΩ ΕΙΝΑΙ Η ΑΛΛΑΓΗ ---
             String displayText = item.name + " x" + item.quantity;
             if (item.comment != null && !item.comment.isEmpty()) {
                 displayText += " (" + item.comment + ")";
             }
             holder.tvInfo.setText(displayText);
-            // --- ΤΕΛΟΣ ΑΛΛΑΓΗΣ ---
 
             holder.btnDecrease.setOnClickListener(v -> {
                 if (listener != null) listener.onDecrease(holder.getAdapterPosition());
@@ -730,30 +916,20 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 selectedItems.clear();
+
+                // ΕΛΕΓΧΟΣ: Αν υπάρχει το last_fiscal_info, το τραπέζι ΕΙΝΑΙ ήδη ανοιχτό στην ΑΑΔΕ
+                if (snapshot.hasChild("last_fiscal_info")) {
+                    isTableAlreadyOpen = true;
+                }
+
                 for (DataSnapshot orderSnap : snapshot.getChildren()) {
                     Map<String, Object> order = (Map<String, Object>) orderSnap.getValue();
                     if (order != null && order.containsKey("items")) {
-                        List<Map<String, Object>> items = (List<Map<String, Object>>) order.get("items");
-                        for (Map<String, Object> item : items) {
-                            String name = (String) item.get("name");
+                        // Αν βρούμε οποιαδήποτε προηγούμενα items, γνωρίζουμε ότι το τραπέζι είναι ενεργό
+                        isTableAlreadyOpen = true;
 
-                            // quantity
-                            Object qtyObj = item.get("quantity");
-                            int qty = 1;
-                            if (qtyObj instanceof Number) qty = ((Number) qtyObj).intValue();
-
-                            // price
-                            Object priceObj = item.get("price");
-                            double price = 0.0;
-                            if (priceObj instanceof Number) price = ((Number) priceObj).doubleValue();
-
-                            // comment
-                            String comment = "";
-                            Object commentObj = item.get("comment");
-                            if (commentObj instanceof String) comment = (String) commentObj;
-
-                            selectedItems.add(new OrderItem(name, qty, price, comment));
-                        }
+                        // ΔΙΑΓΡΑΦΗ: Αφαιρέσαμε το loop που αντέγραφε τα παλιά είδη στο τρέχον καλάθι!
+                        // Έτσι, η οθόνη περιέχει αυστηρά και μόνο τα ΝΕΑ είδη που χτυπάει ο σερβιτόρος.
                     }
                 }
                 selectedAdapter.notifyDataSetChanged();
@@ -770,20 +946,23 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             map.put("name", item.name);
             map.put("quantity", item.quantity);
             map.put("price", item.price);
-            map.put("comment", item.comment);  // <-- προσθήκη
+            map.put("comment", item.comment);
+            map.put("vatPercent", item.vatPercent);
             itemsList.add(map);
         }
 
         Map<String, Object> orderUpdate = new HashMap<>();
         orderUpdate.put("items", itemsList);
         orderUpdate.put("timestamp", System.currentTimeMillis());
+
         if (isTakeAway()) {
+            orderUpdate.put("orderNumber", tableNumber);
+        } else if (isDelivery()) {                     // <-- προσθήκη
             orderUpdate.put("orderNumber", tableNumber);
         } else {
             orderUpdate.put("tableNumber", Integer.parseInt(tableNumber));
-        }orderUpdate.put("orderNumber", tableNumber);
+        }
 
-        // Αποθηκεύουμε πάντα με το ίδιο key "current_order" ώστε να αντικαθίσταται
         tableRef.child("current_order").setValue(orderUpdate);
     }
     private void saveToHistory(String type, String tableNumber, double amount,
@@ -791,7 +970,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         SharedPreferences prefs = getContext().getSharedPreferences(SettingsActivity.PREFS_NAME, MODE_PRIVATE);
         String deviceName = prefs.getString(SettingsActivity.KEY_DEVICE_NAME, "Άγνωστη συσκευή");
 
-        DatabaseReference historyRef = FirebaseDatabase.getInstance().getReference("history");
+        DatabaseReference historyRef = FirebaseHelper.getReference("history");
         String id = historyRef.push().getKey();
 
         HistoryEntry entry = new HistoryEntry(type, tableNumber, amount, paymentMethod,
@@ -840,14 +1019,31 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         }
     }
     private void loadProductsWithCache() {
-        // Προσπάθεια φόρτωσης από cache
-        Map<String, Object> cached = MenuCache.loadProducts(getContext());
-        if (cached != null) {
-            parseProductsMap(cached);
-            Toast.makeText(getContext(), "Το μενού φορτώθηκε από τη μνήμη", Toast.LENGTH_SHORT).show();
+        MenuRepository repo = MenuRepository.getInstance();
+        if (repo.isLoaded()) {
+            // Άμεσα από τη μνήμη
+            categoryList = repo.getCategories();
+            productsByCategoryFull = repo.getProductsByCategory();
+            allProducts = repo.getAllProducts();
+            setupTabs();
+            if (!categoryList.isEmpty()) {
+                currentCategory = categoryList.get(0);
+                showProductsForCategory(currentCategory);
+            }
         } else {
-            // Αν δεν υπάρχει cache, κατέβασε από Firebase
-            loadCategoriesAndProducts();
+            // Πρώτη φορά – φόρτωσε και περίμενε
+            repo.loadMenu(getContext(), () -> {
+                if (isAdded()) {
+                    categoryList = repo.getCategories();
+                    productsByCategoryFull = repo.getProductsByCategory();
+                    allProducts = repo.getAllProducts();
+                    setupTabs();
+                    if (!categoryList.isEmpty()) {
+                        currentCategory = categoryList.get(0);
+                        showProductsForCategory(currentCategory);
+                    }
+                }
+            });
         }
     }
 
@@ -868,6 +1064,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
 
                 String productName = productKey;
                 double price = 0.0;
+                double vatPercent = 13.0; // μεταβλητή εκτός if-else
                 List<Ingredient> ingredients = new ArrayList<>();
                 List<Addon> addons = new ArrayList<>();
 
@@ -880,7 +1077,10 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                     if (priceObj instanceof Number) {
                         price = ((Number) priceObj).doubleValue();
                     }
-                    // Ανάγνωση συστατικών
+                    if (productObj.containsKey("vatPercent")) {
+                        Object vatObj = productObj.get("vatPercent");
+                        vatPercent = vatObj instanceof Number ? ((Number) vatObj).doubleValue() : 13.0;
+                    }
                     Object ingredientsObj = productObj.get("ingredients");
                     if (ingredientsObj instanceof Map) {
                         Map<String, Object> ingsMap = (Map<String, Object>) ingredientsObj;
@@ -895,7 +1095,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                             }
                         }
                     }
-                    // Ανάγνωση addons
                     Object addonsObj = productObj.get("addons");
                     if (addonsObj instanceof Map) {
                         Map<String, Object> addMap = (Map<String, Object>) addonsObj;
@@ -921,7 +1120,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                     continue;
                 }
 
-                ProductItem item = new ProductItem(productName, price, ingredients, addons);
+                ProductItem item = new ProductItem(productName, price, vatPercent, ingredients, addons);
                 productList.add(item);
                 allProducts.add(item);
             }
@@ -939,11 +1138,12 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
     }
 
     private DatabaseReference getOrderRef() {
-        if (isTakeAway()) {
-            return FirebaseDatabase.getInstance().getReference("takeaway_orders").child(tableNumber);
-        } else {
-            return FirebaseDatabase.getInstance().getReference("active_bills").child(tableNumber);
-        }
+        if (tableNumber.startsWith("TA-"))
+            return FirebaseHelper.getReference("takeaway_orders").child(tableNumber);
+        else if (tableNumber.startsWith("DL-"))
+            return FirebaseHelper.getReference("delivery_orders").child(tableNumber);
+        else
+            return FirebaseHelper.getReference("active_bills").child(tableNumber);
     }
     public void setOnDismissListener(DialogInterface.OnDismissListener listener) {
         this.dismissListener = listener;
@@ -957,5 +1157,10 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         if (dismissListener != null) {
             dismissListener.onDismiss(dialog);
         }
+    }
+    @Override
+    public void onDestroyView() {
+        super.onDestroyView();
+        searchHandler.removeCallbacks(searchRunnable);
     }
 }

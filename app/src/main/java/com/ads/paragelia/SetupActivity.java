@@ -3,8 +3,10 @@ package com.ads.paragelia;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.widget.EditText;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.cardview.widget.CardView;
 
 public class SetupActivity extends BaseActivity {
@@ -22,9 +24,8 @@ public class SetupActivity extends BaseActivity {
         CardView cardPrinter = findViewById(R.id.cardPrinter);
         CardView cardClient = findViewById(R.id.cardClient);
 
-        cardPrinter.setOnClickListener(v -> saveRole(ROLE_PRINTER));
-
-        cardClient.setOnClickListener(v -> saveRole(ROLE_CLIENT));
+        cardPrinter.setOnClickListener(v -> promptStoreCode(ROLE_PRINTER));
+        cardClient.setOnClickListener(v -> promptStoreCode(ROLE_CLIENT));
     }
 
     private void saveRole(String role) {
@@ -36,5 +37,24 @@ public class SetupActivity extends BaseActivity {
         Intent intent = new Intent(this, MainActivity.class);
         startActivity(intent);
         finish();
+    }
+    private void promptStoreCode(String role) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        final EditText input = new EditText(this);
+        input.setHint("Κωδικός καταστήματος");
+        builder.setView(input);
+        builder.setTitle("Εισαγωγή κωδικού");
+        builder.setPositiveButton("OK", (dialog, which) -> {
+            String code = input.getText().toString().trim();
+            if (code.isEmpty()) {
+                Toast.makeText(this, "Ο κωδικός είναι υποχρεωτικός", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            StoreConfig.saveStoreCode(this, code);
+            FirebaseHelper.init(code);
+            saveRole(role); // αποθηκεύει τον ρόλο και ανοίγει το MainActivity
+        });
+        builder.setCancelable(false);
+        builder.show();
     }
 }

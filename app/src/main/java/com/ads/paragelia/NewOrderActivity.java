@@ -1,11 +1,14 @@
 package com.ads.paragelia;
 
+import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.cardview.widget.CardView;
@@ -19,6 +22,7 @@ import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -28,26 +32,31 @@ public class NewOrderActivity extends BaseActivity {
     private TableAdapter tableAdapter;
     private DatabaseReference activeBillsRef;
     private List<TableData> tableList = new ArrayList<>();
+    private Button btnMergeTables;
+    private Button btnUnmergeTables;
+    private boolean isMergeMode = false;
+    private boolean isUnmergeMode = false;  // νέα κατάσταση
+    private String sourceTable = null;
+    private DatabaseReference billsRef;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_new_order);
-
+        showMemoryOverlay();
         tableRecyclerView = findViewById(R.id.tableRecyclerView);
         tableRecyclerView.setLayoutManager(new GridLayoutManager(this, 2));
         tableAdapter = new TableAdapter();
         tableRecyclerView.setAdapter(tableAdapter);
 
-        activeBillsRef = FirebaseDatabase.getInstance().getReference("active_bills");
+        activeBillsRef = FirebaseHelper.getReference("active_bills");
+        billsRef = activeBillsRef;
 
         // Αρχικοποίηση λίστας για τραπέζια 1-10
         for (int i = 1; i <= 10; i++) {
-            tableList.add(new TableData(String.valueOf(i), "Καμία παραγγελία", false));
+            tableList.add(new TableData(String.valueOf(i)));
         }
         tableAdapter.notifyDataSetChanged();
-
-
 
         // Live ενημέρωση από Firebase
         activeBillsRef.addValueEventListener(new ValueEventListener() {
@@ -55,14 +64,33 @@ public class NewOrderActivity extends BaseActivity {
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 for (int i = 1; i <= 10; i++) {
                     String tableKey = String.valueOf(i);
+                    TableData data = tableList.get(i - 1);
                     if (snapshot.hasChild(tableKey)) {
-                        Map<String, Object> tableData = (Map<String, Object>) snapshot.child(tableKey).getValue();
-                        String summary = buildOrderSummary(tableData);
-                        tableList.get(i-1).setSummary(summary);
-                        tableList.get(i-1).setHasOrder(true);
+                        DataSnapshot tableSnap = snapshot.child(tableKey);
+                        Map<String, Object> tableData = (Map<String, Object>) tableSnap.getValue();
+
+                        if (tableData != null && tableData.containsKey("merged_to")) {
+                            String mergedTo = (String) tableData.get("merged_to");
+                            data.setMerged(mergedTo);
+                        } else if (tableData != null && tableData.containsKey("current_order")) {
+                            Map<String, Object> cur = (Map<String, Object>) tableData.get("current_order");
+                            if (cur != null && cur.containsKey("merged_from")) {
+                                data.setMergedFrom((String) cur.get("merged_from"));
+                            } else {
+                                data.clearMerged();
+                            }
+                            String summary = buildOrderSummary(tableData);
+                            data.setSummary(summary);
+                            data.setHasOrder(true);
+                        } else {
+                            data.clearMerged();
+                            data.setSummary("Καμία παραγγελία");
+                            data.setHasOrder(false);
+                        }
                     } else {
-                        tableList.get(i-1).setSummary("Καμία παραγγελία");
-                        tableList.get(i-1).setHasOrder(false);
+                        data.setSummary("Καμία παραγγελία");
+                        data.setHasOrder(false);
+                        data.clearMerged();
                     }
                 }
                 tableAdapter.notifyDataSetChanged();
@@ -71,28 +99,72 @@ public class NewOrderActivity extends BaseActivity {
             @Override
             public void onCancelled(@NonNull DatabaseError error) { }
         });
+
+        btnMergeTables = findViewById(R.id.btnMergeTables);
+        btnUnmergeTables = findViewById(R.id.btnUnmergeTables);
+
+        btnMergeTables.setOnClickListener(v -> {
+            if (isUnmergeMode) {
+                Toast.makeText(this, "Βγείτε πρώτα από τη λειτουργία διάσπασης", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (!isMergeMode) {
+                isMergeMode = true;
+                sourceTable = null;
+                btnMergeTables.setText("Ακύρωση Συγχώνευσης");
+                btnUnmergeTables.setVisibility(View.GONE);
+                tableAdapter.notifyDataSetChanged();
+                Toast.makeText(this, "Επιλέξτε το τραπέζι ΠΗΓΗ", Toast.LENGTH_SHORT).show();
+            } else {
+                isMergeMode = false;
+                sourceTable = null;
+                btnMergeTables.setText("Συγχώνευση");
+                btnUnmergeTables.setVisibility(View.GONE);
+                tableAdapter.notifyDataSetChanged();
+                Toast.makeText(this, "Συγχώνευση ακυρώθηκε", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        btnUnmergeTables.setOnClickListener(v -> {
+            if (isMergeMode) {
+                Toast.makeText(this, "Βγείτε πρώτα από τη λειτουργία συγχώνευσης", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (!isUnmergeMode) {
+                isUnmergeMode = true;
+                btnUnmergeTables.setText("Ακύρωση Διάσπασης");
+                btnMergeTables.setVisibility(View.GONE);
+                tableAdapter.notifyDataSetChanged();
+                Toast.makeText(this, "Επιλέξτε το τραπέζι που θέλετε να διασπάσετε", Toast.LENGTH_SHORT).show();
+            } else {
+                isUnmergeMode = false;
+                btnUnmergeTables.setText("Διάσπαση");
+                btnMergeTables.setVisibility(View.VISIBLE);
+                tableAdapter.notifyDataSetChanged();
+                Toast.makeText(this, "Διάσπαση ακυρώθηκε", Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private String buildOrderSummary(Map<String, Object> tableData) {
         StringBuilder sb = new StringBuilder();
         int totalItems = 0;
         for (Map.Entry<String, Object> entry : tableData.entrySet()) {
-            if (entry.getValue() instanceof Map) {
-                Map<String, Object> order = (Map<String, Object>) entry.getValue();
-                Object itemsObj = order.get("items");
-                if (itemsObj instanceof List) {
-                    List<Map<String, Object>> items = (List<Map<String, Object>>) itemsObj;
-                    for (Map<String, Object> item : items) {
-                        if (totalItems >= 5) {
-                            sb.append("...");
-                            break;
-                        }
-                        String name = (String) item.get("name");
-                        Object qtyObj = item.get("quantity");
-                        int qty = (qtyObj instanceof Long) ? ((Long) qtyObj).intValue() : (int) qtyObj;
-                        sb.append(name).append(" x").append(qty).append(", ");
-                        totalItems++;
+            if (!(entry.getValue() instanceof Map)) continue;
+            Map<String, Object> order = (Map<String, Object>) entry.getValue();
+            Object itemsObj = order.get("items");
+            if (itemsObj instanceof List) {
+                List<Map<String, Object>> items = (List<Map<String, Object>>) itemsObj;
+                for (Map<String, Object> item : items) {
+                    if (totalItems >= 5) {
+                        sb.append("...");
+                        break;
                     }
+                    String name = (String) item.get("name");
+                    Object qtyObj = item.get("quantity");
+                    int qty = (qtyObj instanceof Long) ? ((Long) qtyObj).intValue() : (int) qtyObj;
+                    sb.append(name).append(" x").append(qty).append(", ");
+                    totalItems++;
                 }
             }
         }
@@ -114,28 +186,101 @@ public class NewOrderActivity extends BaseActivity {
         @Override
         public void onBindViewHolder(@NonNull TableViewHolder holder, int position) {
             TableData data = tableList.get(position);
+
+            // Συγχωνευμένο τραπέζι (πηγή): γκρι, χωρίς κουμπί, χωρίς κλικ
+            if (data.isMerged()) {
+                holder.tvTableNumber.setText("Τραπέζι " + data.tableNumber + " 🔀");
+                holder.tvOrderSummary.setText("Συγχωνεύτηκε με " + data.mergedTo);
+                holder.cardView.setCardBackgroundColor(Color.LTGRAY);
+                holder.btnAddExtra.setVisibility(View.GONE);
+                holder.cardView.setOnClickListener(null);
+                holder.cardView.setAlpha(1.0f);
+                return;
+            }
+
             holder.tvTableNumber.setText("Τραπέζι " + data.tableNumber);
             holder.tvOrderSummary.setText(data.summary);
-            if (data.hasOrder) {
+            holder.btnAddExtra.setVisibility(View.VISIBLE);
+            holder.cardView.setAlpha(1.0f);
+
+            // Χρώμα φόντου ανάλογα με την κατάσταση
+            if (data.tableNumber.equals(sourceTable) && isMergeMode) {
+                holder.cardView.setCardBackgroundColor(0xFFFFD54F); // κίτρινο (επιλεγμένη πηγή)
+            } else if (data.hasOrder) {
                 holder.cardView.setCardBackgroundColor(0xFFE8F5E9);
             } else {
                 holder.cardView.setCardBackgroundColor(0xFFFFFFFF);
             }
 
-            // Σωστό: άνοιγμα ΜΟΝΟ με κλικ
+            // Κλικ στην κάρτα
             holder.cardView.setOnClickListener(v -> {
-                ProductSelectionBottomSheet bottomSheet = ProductSelectionBottomSheet.newInstance(data.tableNumber);
-                bottomSheet.show(getSupportFragmentManager(), "product_sheet");
+                TableData selectedData = tableList.get(holder.getAdapterPosition());
+
+                // Αν είμαστε σε κατάσταση διάσπασης
+                if (isUnmergeMode) {
+                    if (!selectedData.hasOrder || selectedData.mergedFrom == null) {
+                        Toast.makeText(v.getContext(), "Το τραπέζι δεν είναι συγχωνευμένο", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    unmergeTable(selectedData.tableNumber);
+                    return;
+                }
+
+                // Αν είμαστε σε κατάσταση συγχώνευσης
+                if (isMergeMode) {
+                    if (selectedData.isMerged()) {
+                        Toast.makeText(v.getContext(), "Το τραπέζι έχει ήδη συγχωνευτεί", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    if (sourceTable == null) {
+                        // Επιλογή πηγής (μπορεί να είναι και κενό τραπέζι)
+                        sourceTable = selectedData.tableNumber;
+                        tableAdapter.notifyDataSetChanged();
+                        String msg = selectedData.hasOrder ?
+                                "Τραπέζι " + sourceTable + " ορίστηκε ως ΠΗΓΗ. Επιλέξτε ΠΡΟΟΡΙΣΜΟ." :
+                                "Κενό τραπέζι " + sourceTable + " ως ΠΗΓΗ. Επιλέξτε ένα ακόμη τραπέζι για ένωση.";
+                        Toast.makeText(v.getContext(), msg, Toast.LENGTH_SHORT).show();
+                    } else {
+                        if (sourceTable.equals(selectedData.tableNumber)) {
+                            Toast.makeText(v.getContext(), "Δεν μπορείτε να συγχωνεύσετε το ίδιο τραπέζι", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
+                        TableData sourceData = tableList.get(getIndexByTableNumber(sourceTable));
+                        if (!sourceData.hasOrder && !selectedData.hasOrder) {
+                            performMergeEmptyTables(sourceTable, selectedData.tableNumber);
+                            return;
+                        }
+
+                        performMerge(sourceTable, selectedData.tableNumber);
+                    }
+                } else {
+                    // Κανονική κατάσταση
+                    if (selectedData.isMerged()) {
+                        Toast.makeText(v.getContext(), "Το τραπέζι έχει συγχωνευτεί", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    ProductSelectionBottomSheet bottomSheet = ProductSelectionBottomSheet.newInstance(selectedData.tableNumber);
+                    bottomSheet.show(getSupportFragmentManager(), "product_sheet");
+                }
             });
 
+            // Κουμπί «Προσθήκη»
             holder.btnAddExtra.setOnClickListener(v -> {
+                if (isMergeMode || isUnmergeMode) {
+                    Toast.makeText(v.getContext(), "Δεν μπορείτε να προσθέσετε προϊόντα αυτή τη στιγμή", Toast.LENGTH_SHORT).show();
+                    return;
+                }
                 ProductSelectionBottomSheet bottomSheet = ProductSelectionBottomSheet.newInstance(data.tableNumber);
                 bottomSheet.show(getSupportFragmentManager(), "product_sheet");
             });
         }
 
         @Override
-        public int getItemCount() { return tableList.size(); }
+        public int getItemCount() {
+            return tableList.size();
+        }
 
         class TableViewHolder extends RecyclerView.ViewHolder {
             TextView tvTableNumber, tvOrderSummary;
@@ -152,12 +297,214 @@ public class NewOrderActivity extends BaseActivity {
         }
     }
 
-    private static class TableData {
-        String tableNumber; String summary; boolean hasOrder;
-        TableData(String tableNumber, String summary, boolean hasOrder) {
-            this.tableNumber = tableNumber; this.summary = summary; this.hasOrder = hasOrder;
+    // ---------- Διάσπαση συγχωνευμένου τραπεζιού ----------
+    private void unmergeTable(String tableNumber) {
+        DatabaseReference tableRef = billsRef.child(tableNumber);
+        tableRef.child("current_order").addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                if (!snapshot.exists()) {
+                    Toast.makeText(NewOrderActivity.this, "Το τραπέζι δεν έχει παραγγελία", Toast.LENGTH_SHORT).show();
+                    resetUnmergeMode();
+                    return;
+                }
+                Map<String, Object> curOrder = (Map<String, Object>) snapshot.getValue();
+                if (curOrder == null || !curOrder.containsKey("merged_from")) {
+                    Toast.makeText(NewOrderActivity.this, "Το τραπέζι δεν είναι συγχωνευμένο", Toast.LENGTH_SHORT).show();
+                    resetUnmergeMode();
+                    return;
+                }
+                String mergedFrom = (String) curOrder.get("merged_from");
+                // Αφαίρεσε το merged_from από το current_order
+                tableRef.child("current_order").child("merged_from").removeValue()
+                        .addOnSuccessListener(aVoid -> {
+                            // Καθάρισε την πηγή (διέγραψε το merged_to)
+                            DatabaseReference sourceRef = billsRef.child(mergedFrom);
+                            sourceRef.removeValue()
+                                    .addOnSuccessListener(aVoid2 -> {
+                                        saveToHistory(HistoryEntry.TYPE_TABLE_MOVED,
+                                                tableNumber + " διασπάστηκε από " + mergedFrom, 0.0, null,
+                                                "Διάσπαση τραπεζιών");
+                                        Toast.makeText(NewOrderActivity.this,
+                                                "Το τραπέζι " + tableNumber + " διασπάστηκε από το " + mergedFrom,
+                                                Toast.LENGTH_SHORT).show();
+                                        resetUnmergeMode();
+                                    })
+                                    .addOnFailureListener(e -> {
+                                        Toast.makeText(NewOrderActivity.this,
+                                                "Σφάλμα καθαρισμού πηγής", Toast.LENGTH_SHORT).show();
+                                        resetUnmergeMode();
+                                    });
+                        })
+                        .addOnFailureListener(e -> {
+                            Toast.makeText(NewOrderActivity.this,
+                                    "Σφάλμα ενημέρωσης τραπεζιού", Toast.LENGTH_SHORT).show();
+                            resetUnmergeMode();
+                        });
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                resetUnmergeMode();
+            }
+        });
+    }
+
+    private void resetUnmergeMode() {
+        isUnmergeMode = false;
+        btnUnmergeTables.setText("Διάσπαση");
+        btnMergeTables.setVisibility(View.VISIBLE);
+        tableAdapter.notifyDataSetChanged();
+    }
+
+    // ---------- Συγχώνευση γεμάτων τραπεζιών ----------
+    private void performMerge(String source, String destination) {
+        DatabaseReference sourceRef = billsRef.child(source);
+        DatabaseReference destRef = billsRef.child(destination);
+
+        sourceRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot sourceSnap) {
+                if (!sourceSnap.exists()) {
+                    performMergeEmptyTables(source, destination);
+                    return;
+                }
+
+                Map<String, Object> sourceData = (Map<String, Object>) sourceSnap.getValue();
+                destRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot destSnap) {
+                        Map<String, Object> destData = destSnap.exists() ? (Map<String, Object>) destSnap.getValue() : new HashMap<>();
+
+                        List<Map<String, Object>> combinedItems = new ArrayList<>();
+                        addAllItemsFromTableData(destData, combinedItems);
+                        addAllItemsFromTableData(sourceData, combinedItems);
+
+                        Map<String, Object> newOrder = new HashMap<>();
+                        newOrder.put("items", combinedItems);
+                        newOrder.put("timestamp", System.currentTimeMillis());
+                        newOrder.put("tableNumber", Integer.parseInt(destination));
+                        newOrder.put("status", "pending");
+                        newOrder.put("merged_from", source);
+
+                        destRef.child("current_order").setValue(newOrder)
+                                .addOnSuccessListener(aVoid -> {
+                                    Map<String, Object> mergedFlag = new HashMap<>();
+                                    mergedFlag.put("merged_to", destination);
+                                    sourceRef.setValue(mergedFlag)
+                                            .addOnSuccessListener(aVoid2 -> {
+                                                saveToHistory(HistoryEntry.TYPE_TABLE_MERGED,
+                                                        source + " → " + destination, 0.0, null,
+                                                        "Συγχώνευση τραπεζιών");
+                                                Toast.makeText(NewOrderActivity.this,
+                                                        "Συγχώνευση ολοκληρώθηκε: " + source + " + " + destination,
+                                                        Toast.LENGTH_SHORT).show();
+                                                resetMergeMode();
+                                            })
+                                            .addOnFailureListener(e -> {
+                                                Toast.makeText(NewOrderActivity.this,
+                                                        "Σφάλμα μαρκαρίσματος πηγής", Toast.LENGTH_SHORT).show();
+                                                resetMergeMode();
+                                            });
+                                })
+                                .addOnFailureListener(e -> {
+                                    Toast.makeText(NewOrderActivity.this,
+                                            "Σφάλμα αποθήκευσης προορισμού", Toast.LENGTH_SHORT).show();
+                                    resetMergeMode();
+                                });
+                    }
+
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError error) {
+                        resetMergeMode();
+                    }
+                });
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                resetMergeMode();
+            }
+        });
+    }
+
+    private void performMergeEmptyTables(String source, String destination) {
+        DatabaseReference sourceRef = billsRef.child(source);
+        Map<String, Object> mergedFlag = new HashMap<>();
+        mergedFlag.put("merged_to", destination);
+        sourceRef.setValue(mergedFlag)
+                .addOnSuccessListener(aVoid -> {
+                    saveToHistory(HistoryEntry.TYPE_TABLE_MERGED,
+                            source + " → " + destination, 0.0, null,
+                            "Ένωση δύο κενών τραπεζιών");
+                    Toast.makeText(NewOrderActivity.this,
+                            "Τα τραπέζια " + source + " και " + destination + " ενώθηκαν!",
+                            Toast.LENGTH_SHORT).show();
+                    resetMergeMode();
+                })
+                .addOnFailureListener(e -> {
+                    Toast.makeText(NewOrderActivity.this, "Σφάλμα", Toast.LENGTH_SHORT).show();
+                    resetMergeMode();
+                });
+    }
+
+    private void addAllItemsFromTableData(Map<String, Object> tableData, List<Map<String, Object>> targetList) {
+        for (Map.Entry<String, Object> entry : tableData.entrySet()) {
+            if (!(entry.getValue() instanceof Map)) continue;
+            Map<String, Object> order = (Map<String, Object>) entry.getValue();
+            Object itemsObj = order.get("items");
+            if (itemsObj instanceof List) {
+                targetList.addAll((List<Map<String, Object>>) itemsObj);
+            }
         }
+    }
+
+    private int getIndexByTableNumber(String tableNumber) {
+        for (int i = 0; i < tableList.size(); i++) {
+            if (tableList.get(i).tableNumber.equals(tableNumber)) return i;
+        }
+        return -1;
+    }
+
+    private void resetMergeMode() {
+        isMergeMode = false;
+        sourceTable = null;
+        btnMergeTables.setText("Συγχώνευση");
+        btnUnmergeTables.setVisibility(View.VISIBLE);
+        tableAdapter.notifyDataSetChanged();
+    }
+
+    private void saveToHistory(String type, String tableNumber, double amount,
+                               String paymentMethod, String details) {
+        SharedPreferences prefs = getSharedPreferences(SettingsActivity.PREFS_NAME, MODE_PRIVATE);
+        String deviceName = prefs.getString(SettingsActivity.KEY_DEVICE_NAME, "Άγνωστη συσκευή");
+
+        DatabaseReference historyRef = FirebaseHelper.getReference("history");
+        String id = historyRef.push().getKey();
+
+        HistoryEntry entry = new HistoryEntry(type, tableNumber, amount, paymentMethod,
+                deviceName, System.currentTimeMillis(), details);
+
+        historyRef.child(id).setValue(entry);
+    }
+
+    private static class TableData {
+        String tableNumber;
+        String summary = "Καμία παραγγελία";
+        boolean hasOrder = false;
+        boolean merged = false;
+        String mergedTo = "";
+        String mergedFrom = null;  // νέο: αν είναι προορισμός, αποθηκεύει το τραπέζι πηγή
+
+        TableData(String tableNumber) {
+            this.tableNumber = tableNumber;
+        }
+
         void setSummary(String summary) { this.summary = summary; }
         void setHasOrder(boolean hasOrder) { this.hasOrder = hasOrder; }
+        void setMerged(String to) { this.merged = true; this.mergedTo = to; this.mergedFrom = null; }
+        void setMergedFrom(String from) { this.mergedFrom = from; }
+        void clearMerged() { this.merged = false; this.mergedTo = ""; this.mergedFrom = null; }
+        boolean isMerged() { return merged; }
     }
 }

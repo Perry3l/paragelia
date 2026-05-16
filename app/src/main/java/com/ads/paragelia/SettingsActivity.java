@@ -7,7 +7,16 @@ import android.os.Bundle;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
+import androidx.annotation.NonNull;
 import androidx.appcompat.widget.SwitchCompat;
+
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+
+import java.util.Map;
 
 public class SettingsActivity extends BaseActivity {
 
@@ -29,7 +38,7 @@ public class SettingsActivity extends BaseActivity {
         etDeviceName = findViewById(R.id.etDeviceName);
         btnSave = findViewById(R.id.btnSave);
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-
+        showMemoryOverlay();
         // Φόρτωση αποθηκευμένου ονόματος
         String savedName = prefs.getString(KEY_DEVICE_NAME, "");
         etDeviceName.setText(savedName);
@@ -44,12 +53,27 @@ public class SettingsActivity extends BaseActivity {
             Toast.makeText(this, "Το όνομα αποθηκεύτηκε", Toast.LENGTH_SHORT).show();
             finish();
         });
-        Button btnRefresh = findViewById(R.id.btnRefreshMenu);
-        btnRefresh.setOnClickListener(v -> {
-            MenuCache.clear(this);
-            Toast.makeText(this, "Το μενού θα ενημερωθεί την επόμενη φορά που θα ανοίξετε τα προϊόντα", Toast.LENGTH_LONG).show();
-            // Προαιρετικά, μπορούμε να κατεβάσουμε άμεσα αν θέλουμε
+
+        Button btnRefreshMenu = findViewById(R.id.btnRefreshMenu);
+        btnRefreshMenu.setOnClickListener(v -> {
+            MenuRepository.getInstance().refresh(this, () -> {
+                runOnUiThread(() -> {
+                    Toast.makeText(this, "Το μενού ενημερώθηκε επιτυχώς", Toast.LENGTH_SHORT).show();
+                });
+            });
         });
+
+        SwitchCompat switchMemoryOverlay = findViewById(R.id.switchMemoryOverlay);
+        SharedPreferences prefsOverlay = getSharedPreferences("debug_prefs", MODE_PRIVATE);
+        boolean overlayEnabled = prefsOverlay.getBoolean("show_memory_overlay", false);
+        switchMemoryOverlay.setChecked(overlayEnabled);
+
+        switchMemoryOverlay.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            prefsOverlay.edit().putBoolean("show_memory_overlay", isChecked).apply();
+            // Αν θες να φανεί άμεσα η αλλαγή στην ίδια οθόνη, κάνε recreate
+            recreate();
+        });
+
         switchTakeAway = findViewById(R.id.switchTakeAway);
         prefsa = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
@@ -60,26 +84,66 @@ public class SettingsActivity extends BaseActivity {
             prefsa.edit().putBoolean(KEY_TAKEAWAY_ENABLED, isChecked).apply();
             Toast.makeText(this, isChecked ? "Το Take Away ενεργοποιήθηκε" : "Το Take Away απενεργοποιήθηκε", Toast.LENGTH_SHORT).show();
         });
+
+        // ----- ΝΕΟ ΚΟΥΜΠΙ: Διάσπαση όλων των ενώσεων -----
+        Button btnResolveAll = findViewById(R.id.btnResolveAllMerges);
+        btnResolveAll.setOnClickListener(v -> {
+            new AlertDialog.Builder(this)
+                    .setTitle("Διάσπαση όλων των ενώσεων")
+                    .setMessage("Θέλετε να διασπάσετε όλα τα συγχωνευμένα τραπέζια; " +
+                            "Τα είδη θα παραμείνουν στα βασικά τραπέζια και τα υπόλοιπα θα ελευθερωθούν.")
+                    .setPositiveButton("Ναι", (dialog, which) -> resolveAllMerges())
+                    .setNegativeButton("Άκυρο", null)
+                    .show();
+        });
+
         Button btnRestart = findViewById(R.id.btnRestartApp);
         btnRestart.setOnClickListener(v -> restartApp());
     }
+
+    private void resolveAllMerges() {
+        DatabaseReference billsRef = FirebaseHelper.getReference("active_bills");
+        billsRef.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                for (DataSnapshot tableSnap : snapshot.getChildren()) {
+                    Map<String, Object> tableData = (Map<String, Object>) tableSnap.getValue();
+                    if (tableData == null) continue;
+
+                    if (tableData.containsKey("merged_to")) {
+                        // Είναι πηγή – απλώς διαγράφουμε το merged_to (καθαρίζει ολόκληρο τον κόμβο)
+                        tableSnap.getRef().removeValue();
+                    } else if (tableData.containsKey("current_order")) {
+                        // Είναι προορισμός – αφαιρούμε το merged_from
+                        Map<String, Object> cur = (Map<String, Object>) tableData.get("current_order");
+                        if (cur != null && cur.containsKey("merged_from")) {
+                            tableSnap.getRef().child("current_order").child("merged_from").removeValue();
+                        }
+                    }
+                }
+                Toast.makeText(SettingsActivity.this, "Όλες οι ενώσεις διασπάστηκαν!", Toast.LENGTH_SHORT).show();
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Toast.makeText(SettingsActivity.this, "Σφάλμα: " + error.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
     private void restartApp() {
         new AlertDialog.Builder(this)
                 .setTitle("Επανεκκίνηση")
                 .setMessage("Θέλετε να γίνει επανεκκίνηση της εφαρμογής;")
                 .setPositiveButton("Ναι", (dialog, which) -> {
-                    // Μικρή καθυστέρηση για να κλείσει το dialog
                     new android.os.Handler().postDelayed(() -> {
-                        // Τερματισμός της εφαρμογής
                         finishAffinity();
-                        // Επανεκκίνηση μέσω του launcher
                         Intent intent = getPackageManager().getLaunchIntentForPackage(getPackageName());
                         if (intent != null) {
                             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
                             startActivity(intent);
                         }
-                        // Σκοτώνουμε τη διεργασία για να καθαρίσουν όλα
-                        System.exit(0);
+
                     }, 300);
                 })
                 .setNegativeButton("Όχι", null)

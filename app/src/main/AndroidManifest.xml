@@ -11,6 +11,11 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <uses-feature android:name="android.hardware.usb.host" android:required="true" />
 
     <uses-feature
         android:name="android.hardware.bluetooth"
@@ -20,6 +25,7 @@
         android:required="false" />
 
     <application
+        android:name=".MyApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -28,6 +34,15 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Paragelia">
+        <activity
+            android:name=".DeliveryOrdersActivity"
+            android:exported="false" />
+        <activity
+            android:name=".CustomerInfoActivity"
+            android:exported="false" />
+        <activity
+            android:name=".DeliveryActivity"
+            android:exported="false" />
         <activity
             android:name=".PrinterSettingsActivity"
             android:exported="false" />
@@ -43,7 +58,9 @@
         <activity
             android:name=".SplitItemsActivity"
             android:exported="false" />
-        <activity android:name=".TakeAwayOrdersActivity" android:exported="false" />
+        <activity
+            android:name=".TakeAwayOrdersActivity"
+            android:exported="false" />
         <activity
             android:name=".SelectProductActivity"
             android:exported="false" />
@@ -56,7 +73,15 @@
         <activity android:name=".TableOrderActivity" />
         <activity
             android:name=".PrinterActivity"
-            android:exported="false" />
+            android:exported="false"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter" />
+        </activity>
         <activity
             android:name=".NewOrderActivity"
             android:exported="false" />
@@ -68,10 +93,18 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

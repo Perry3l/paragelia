@@ -5,6 +5,7 @@
     android:id="@+id/main"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#F5F5F5"
     tools:context=".MainActivity">
 
     <TextView
@@ -27,14 +28,14 @@
         android:columnCount="2"
         android:columnOrderPreserved="false"
         android:padding="16dp"
-        android:rowCount="2"
+        android:rowCount="3"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/textViewWelcome">
 
         <!-- Νέα Παραγγελία -->
-        <androidx.cardview.widget.CardView
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardNewOrder"
             android:layout_width="0dp"
             android:layout_height="150dp"
@@ -44,9 +45,9 @@
             android:clickable="true"
             android:focusable="true"
             android:foreground="?android:attr/selectableItemBackground"
-            app:cardBackgroundColor="@color/design_default_color_primary"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp">
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="#4CAF50">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -68,10 +69,10 @@
                     android:textColor="@android:color/white"
                     android:textSize="18sp" />
             </LinearLayout>
-        </androidx.cardview.widget.CardView>
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- Τραπέζια -->
-        <androidx.cardview.widget.CardView
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardTables"
             android:layout_width="0dp"
             android:layout_height="150dp"
@@ -81,9 +82,9 @@
             android:clickable="true"
             android:focusable="true"
             android:foreground="?android:attr/selectableItemBackground"
-            app:cardBackgroundColor="@color/design_default_color_secondary"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp">
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="#2196F3">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -105,10 +106,10 @@
                     android:textColor="@android:color/white"
                     android:textSize="18sp" />
             </LinearLayout>
-        </androidx.cardview.widget.CardView>
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- Ιστορικό -->
-        <androidx.cardview.widget.CardView
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardHistory"
             android:layout_width="0dp"
             android:layout_height="150dp"
@@ -118,9 +119,9 @@
             android:clickable="true"
             android:focusable="true"
             android:foreground="?android:attr/selectableItemBackground"
-            app:cardBackgroundColor="@color/design_default_color_primary"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp">
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="#9C27B0">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -142,10 +143,10 @@
                     android:textColor="@android:color/white"
                     android:textSize="18sp" />
             </LinearLayout>
-        </androidx.cardview.widget.CardView>
+        </com.google.android.material.card.MaterialCardView>
 
-        <!-- Αναφορές (με το δικό σου drawable) -->
-        <androidx.cardview.widget.CardView
+        <!-- Αναφορές -->
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardReports"
             android:layout_width="0dp"
             android:layout_height="150dp"
@@ -155,9 +156,9 @@
             android:clickable="true"
             android:focusable="true"
             android:foreground="?android:attr/selectableItemBackground"
-            app:cardBackgroundColor="@color/design_default_color_secondary"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp">
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="#FF9800">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -175,12 +176,14 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="Αναφορές"
+                    android:text="Ρυθμίσεις"
                     android:textColor="@android:color/white"
                     android:textSize="18sp" />
             </LinearLayout>
-        </androidx.cardview.widget.CardView>
-        <androidx.cardview.widget.CardView
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Take Away -->
+        <com.google.android.material.card.MaterialCardView
             android:id="@+id/cardTakeAway"
             android:layout_width="0dp"
             android:layout_height="150dp"
@@ -189,9 +192,9 @@
             android:clickable="true"
             android:focusable="true"
             android:foreground="?android:attr/selectableItemBackground"
-            app:cardBackgroundColor="#FF5722"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp">
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="#FF5722">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -213,8 +216,53 @@
                     android:textColor="@android:color/white"
                     android:textSize="18sp" />
             </LinearLayout>
-        </androidx.cardview.widget.CardView>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Delivery (προσθήκη αν δεν υπάρχει) -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardDelivery"
+            android:layout_width="0dp"
+            android:layout_height="150dp"
+            android:layout_columnWeight="1"
+            android:layout_margin="8dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?android:attr/selectableItemBackground"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
+            app:cardBackgroundColor="#607D8B">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@android:drawable/ic_menu_send"
+                    app:tint="@android:color/white" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Delivery"
+                    android:textColor="@android:color/white"
+                    android:textSize="18sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
     </GridLayout>
 
-
+    <TextView
+        android:id="@+id/tvVersionMain"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        android:text="v1.0.0"
+        android:textColor="#888888"
+        android:textSize="12sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

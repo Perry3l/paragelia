@@ -16,11 +16,11 @@ import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.Query;
 import com.google.firebase.database.ValueEventListener;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -31,64 +31,126 @@ public class HistoryActivity extends BaseActivity {
     private HistoryAdapter adapter;
     private List<HistoryEntry> historyList = new ArrayList<>();
     private DatabaseReference historyRef;
-    private Button btnClearView;
+    private Button btnLoadMore;
+
+    private static final int PAGE_SIZE = 50;
+    private String lastKey = null;               // το κλειδί της τελευταίας εγγραφής που φορτώθηκε
+    private boolean isLoading = false;
+    private boolean allLoaded = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_history);
-
+        showMemoryOverlay();
         rvHistory = findViewById(R.id.rvHistory);
-        btnClearView = findViewById(R.id.btnClearView);
+        btnLoadMore = findViewById(R.id.btnLoadMore);
 
         rvHistory.setLayoutManager(new LinearLayoutManager(this));
         adapter = new HistoryAdapter(historyList);
         rvHistory.setAdapter(adapter);
 
-        historyRef = FirebaseDatabase.getInstance().getReference("history");
+        historyRef = FirebaseHelper.getReference("history");
 
-        loadHistory();
+        // Πρώτη φόρτωση
+        loadInitialHistory();
 
-        btnClearView.setOnClickListener(v -> {
-            historyList.clear();
-            adapter.notifyDataSetChanged();
-            btnClearView.setVisibility(View.GONE);
-            Toast.makeText(this, "Η προβολή καθαρίστηκε προσωρινά", Toast.LENGTH_SHORT).show();
-        });
+        btnLoadMore.setOnClickListener(v -> loadMoreHistory());
     }
 
-    private void loadHistory() {
-        historyRef.orderByChild("timestamp").addValueEventListener(new ValueEventListener() {
+    private void loadInitialHistory() {
+        isLoading = true;
+        Query query = historyRef.orderByKey().limitToLast(PAGE_SIZE);
+
+        query.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 historyList.clear();
                 for (DataSnapshot snap : snapshot.getChildren()) {
                     HistoryEntry entry = snap.getValue(HistoryEntry.class);
-                    if (entry != null) {
-                        // Αγνόηση ακυρώσεων
-                        if (HistoryEntry.TYPE_TABLE_CANCELLED.equals(entry.type) ||
-                                HistoryEntry.TYPE_ORDER_COMPLETED.equals(entry.type)) {
-                            continue;
-                        }
+                    if (entry != null && !HistoryEntry.TYPE_TABLE_CANCELLED.equals(entry.type)
+                            && !HistoryEntry.TYPE_ORDER_COMPLETED.equals(entry.type)) {
                         historyList.add(entry);
+                        lastKey = snap.getKey();  // κρατάμε το πρώτο (παλαιότερο) κλειδί
                     }
                 }
-                Collections.reverse(historyList);
+                // Η Firebase επιστρέφει ταξινομημένα αύξοντα, άρα πρέπει να αντιστρέψουμε
+                java.util.Collections.reverse(historyList);
                 adapter.notifyDataSetChanged();
 
-                // Επαναφορά του κουμπιού αν υπάρχουν δεδομένα
-                if (!historyList.isEmpty()) {
-                    btnClearView.setVisibility(View.VISIBLE);
-                }
+                // Αν πήραμε λιγότερα από PAGE_SIZE, σημαίνει ότι φτάσαμε στο τέλος
+                allLoaded = (snapshot.getChildrenCount() < PAGE_SIZE);
+                updateLoadMoreButton();
+                isLoading = false;
             }
 
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
-                Toast.makeText(HistoryActivity.this, "Σφάλμα φόρτωσης ιστορικού", Toast.LENGTH_SHORT).show();
+                isLoading = false;
             }
         });
     }
 
+    private void loadMoreHistory() {
+        if (isLoading || allLoaded) return;
+
+        isLoading = true;
+        // Φορτώνουμε τα αμέσως παλαιότερα: ξεκινάμε από το lastKey, παραλείπουμε το ίδιο το lastKey,
+        // και παίρνουμε τα προηγούμενα PAGE_SIZE.
+        Query query = historyRef.orderByKey().endAt(lastKey).limitToLast(PAGE_SIZE + 1);
+
+        query.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                List<HistoryEntry> olderEntries = new ArrayList<>();
+                int count = 0;
+                String newLastKey = null;
+
+                for (DataSnapshot snap : snapshot.getChildren()) {
+                    // Το πρώτο (παλαιότερο) κλειδί θα είναι το νέο lastKey
+                    if (newLastKey == null) {
+                        newLastKey = snap.getKey();
+                    }
+                    // Αν φτάσαμε στο lastKey που ήδη είχαμε, το пропускаμε
+                    if (snap.getKey().equals(lastKey)) continue;
+
+                    HistoryEntry entry = snap.getValue(HistoryEntry.class);
+                    if (entry != null && !HistoryEntry.TYPE_TABLE_CANCELLED.equals(entry.type)
+                            && !HistoryEntry.TYPE_ORDER_COMPLETED.equals(entry.type)) {
+                        olderEntries.add(entry);
+                        count++;
+                    }
+                }
+
+                // Προσάρτηση στο τέλος της λίστας (χωρίς αντιστροφή, γιατί είναι ήδη παλαιότερα)
+                historyList.addAll(olderEntries);
+                adapter.notifyDataSetChanged();
+                lastKey = newLastKey;
+
+                // Αν πήραμε λιγότερα από αυτά που ζητήσαμε, τελειώσαμε
+                if (count < PAGE_SIZE) {
+                    allLoaded = true;
+                }
+                updateLoadMoreButton();
+                isLoading = false;
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                isLoading = false;
+            }
+        });
+    }
+
+    private void updateLoadMoreButton() {
+        if (allLoaded) {
+            btnLoadMore.setVisibility(View.GONE);
+        } else {
+            btnLoadMore.setVisibility(View.VISIBLE);
+        }
+    }
+
+    // ================== Adapter ==================
     private class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHolder> {
         private List<HistoryEntry> list;
 

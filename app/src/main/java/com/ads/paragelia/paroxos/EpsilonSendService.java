@@ -33,4 +33,20 @@ public interface EpsilonSendService {
             @Header("X-Version") String version,
             @Body JsonObject request
     );
+
+
+    // ΝΕΕΣ ΜΕΘΟΔΟΙ
+    @POST("/api/cancelPayment")
+    Call<JsonObject> cancelPayment(
+            @Header("Authorization") String authorization,
+            @Header("X-Version") String version,
+            @Body JsonObject request
+    );
+
+    @POST("/api/submitPayment")
+    Call<SendResponse> submitPayment(
+            @Header("Authorization") String authorization,
+            @Header("X-Version") String version,
+            @Body JsonObject request
+    );
 }

@@ -1,77 +1,53 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="#F5F5F5">
 
-    <LinearLayout
-        android:id="@+id/statusBar"
+    <!-- Status Bar -->
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="8dp"
-        android:background="#F0F0F0"
-        android:gravity="center_vertical">
+        app:cardCornerRadius="12dp"
+        app:cardElevation="2dp"
+        android:layout_marginBottom="16dp">
 
-        <TextView
-            android:id="@+id/status_clock"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:id="@+id/statusBar"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="--:--"
-            android:textStyle="bold"
-            android:textSize="16sp" />
+            android:orientation="horizontal"
+            android:padding="8dp"
+            android:gravity="center_vertical">
 
-        <TextView
-            android:id="@+id/status_net"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🌐"
-            android:textSize="18sp"
-            android:paddingEnd="8dp" />
+            <TextView
+                android:id="@+id/status_clock"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="--:--"
+                android:textStyle="bold"
+                android:textSize="16sp" />
 
-        <TextView
-            android:id="@+id/status_gps"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="📍"
-            android:textSize="18sp"
-            android:paddingEnd="8dp" />
-
-        <TextView
-            android:id="@+id/status_battery"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🔋"
-            android:textSize="18sp"
-            android:paddingEnd="8dp" />
-
-        <TextView
-            android:id="@+id/status_nfc"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="📱"
-            android:textSize="18sp"
-            android:paddingEnd="8dp" />
-
-        <TextView
-            android:id="@+id/status_printer"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🖨️"
-            android:textSize="18sp" />
-
-    </LinearLayout>
+            <TextView android:id="@+id/status_net" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🌐" android:textSize="18sp" android:paddingEnd="8dp" />
+            <TextView android:id="@+id/status_gps" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📍" android:textSize="18sp" android:paddingEnd="8dp" />
+            <TextView android:id="@+id/status_battery" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🔋" android:textSize="18sp" android:paddingEnd="8dp" />
+            <TextView android:id="@+id/status_nfc" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="📱" android:textSize="18sp" android:paddingEnd="8dp" />
+            <TextView android:id="@+id/status_printer" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="🖨️" android:textSize="18sp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Συσκευή Εκτυπωτή"
+        android:text="Διαχείριση Εκτυπωτών"
         android:textSize="24sp"
         android:textStyle="bold"
         android:layout_gravity="center"
-        android:layout_marginBottom="16dp"/>
+        android:layout_marginBottom="16dp" />
 
     <TextView
         android:id="@+id/tvStatus"
@@ -79,50 +55,104 @@
         android:layout_height="wrap_content"
         android:text="Κατάσταση: Αναμονή"
         android:textSize="16sp"
-        android:layout_marginBottom="16dp"/>
+        android:layout_marginBottom="12dp" />
 
-    <Button
-        android:id="@+id/btnSelectPrinter"
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvPrinters"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginBottom="12dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnAddNetworkPrinter"
+        style="@style/Widget.Material3.Button"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Πληροφορίες Εκτυπωτή"
-        android:layout_marginBottom="1dp"/>
-    <Button
+        android:text="➕ Προσθήκη Δικτυακού Εκτυπωτή"
+        android:layout_marginTop="4dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnScanUsb"
+        style="@style/Widget.Material3.Button.TonalButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🔄 Σάρωση για USB"
+        android:layout_marginTop="4dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnViewTables"
+        style="@style/Widget.Material3.Button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Ανοιχτά Τραπέζια"
+        android:layout_marginTop="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnTakeAway"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Take Away"
+            android:layout_marginEnd="4dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnTakeAwayOrders"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="TA Παραγγελίες"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDelivery"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Delivery"
+            android:layout_marginEnd="4dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDeliveryOrders"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="DL Παραγγελίες"
+            android:layout_marginStart="4dp" />
+    </LinearLayout>
+
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/btnSettings"
+        style="@style/Widget.Material3.Button.TonalButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="⚙️ Ρυθμίσεις"
-        android:layout_marginTop="8dp"
-        android:backgroundTint="#607D8B"
-        android:textColor="#FFFFFF"
-        android:padding="12dp" />
-    <Button
-        android:id="@+id/btnTakeAway"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Take Away"
-        android:layout_marginTop="8dp"
-        android:backgroundTint="#FF5722"
-        android:textColor="#FFFFFF"
-        android:padding="12dp" />
-    <Button
-        android:id="@+id/btnTakeAwayOrders"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Take Away Παραγγελίες"
-        android:layout_marginTop="4dp"
-        android:backgroundTint="#9C27B0"
-        android:textColor="#FFFFFF"
-        android:padding="12dp" />
-    <Button
-        android:id="@+id/btnViewTables"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="ΑΝΟΙΧΤΑ ΤΡΑΠΕΖΙΑ"
-        android:layout_marginTop="4dp"
-        android:backgroundTint="#2196F3"
-        android:textColor="#FFFFFF"
-        android:textSize="18sp"
-        android:padding="12dp" />
+        android:layout_marginTop="8dp" />
 
+    <TextView
+        android:id="@+id/tvVersionPrinter"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:layout_marginTop="8dp"
+        android:text="v1.0.0"
+        android:textColor="#888888"
+        android:textSize="12sp" />
 </LinearLayout>

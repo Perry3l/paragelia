@@ -13,17 +13,13 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import com.zcs.sdk.DriverManager;
 import com.zcs.sdk.Printer;
 import com.zcs.sdk.SdkResult;
@@ -43,14 +39,14 @@ import retrofit2.Call;
 import retrofit2.Callback;
 import retrofit2.Response;
 
-public class TakeAwayOrdersActivity extends AppCompatActivity {
+public class TakeAwayOrdersActivity extends BaseActivity {
 
     private RecyclerView rvOrders;
     private TakeAwayAdapter adapter;
     private List<OrderData> orderList = new ArrayList<>();
     private DatabaseReference takeawayRef;
 
-    // Εκτυπωτής
+    private PaymentManager paymentManager;
     private DriverManager mDriverManager;
     private Sys mSys;
     private Printer mPrinter;
@@ -60,17 +56,20 @@ public class TakeAwayOrdersActivity extends AppCompatActivity {
     private String pendingOrderNumber = "";
     private String pendingOrderId = "";
     private List<Map<String, Object>> pendingItems;
-    private PaymentCompleteCallback pendingPaymentCallback;
-    private int pendingPaymentType = 7;
+    private java.util.concurrent.ExecutorService printExecutor;
+    private PrinterManager printerManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_takeaway_orders);
-
+        showMemoryOverlay();
         rvOrders = findViewById(R.id.rvTakeAwayOrders);
         rvOrders.setLayoutManager(new LinearLayoutManager(this));
-        takeawayRef = FirebaseDatabase.getInstance().getReference("takeaway_orders");
+        takeawayRef = FirebaseHelper.getReference("takeaway_orders");
+
+        printerManager = PrinterManager.getInstance(this);
+        printerManager.loadPrintersConfig();
 
         // Έλεγχος ύπαρξης JWT token
         SharedPreferences prefs = getSharedPreferences("my_prefs", MODE_PRIVATE);
@@ -80,6 +79,7 @@ public class TakeAwayOrdersActivity extends AppCompatActivity {
         } else {
             initializePrinterAndLoadOrders();
         }
+        paymentManager = new PaymentManager(this);
     }
 
     private void performEpsilonLogin() {
@@ -123,7 +123,7 @@ public class TakeAwayOrdersActivity extends AppCompatActivity {
     }
 
     private void initializePrinterAndLoadOrders() {
-        // Αρχικοποίηση εκτυπωτή
+        printExecutor = java.util.concurrent.Executors.newSingleThreadExecutor();
         mDriverManager = DriverManager.getInstance();
         mSys = mDriverManager.getBaseSysDevice();
         mPrinter = mDriverManager.getPrinter();
@@ -177,311 +177,180 @@ public class TakeAwayOrdersActivity extends AppCompatActivity {
     }
 
     private void showPaymentMethodDialog(OrderData order) {
+        // Υπολογισμός συνολικού ποσού
+        double total = 0.0;
+        if (order.items != null) {
+            for (Map<String, Object> item : order.items) {
+                double price = item.get("price") instanceof Number ? ((Number) item.get("price")).doubleValue() : 0.0;
+                int qty = item.get("quantity") instanceof Number ? ((Number) item.get("quantity")).intValue() : 1;
+                total += price * qty;
+            }
+        }
+        final double finalTotal = total;  // κάνε final για χρήση στα lambdas
+
+        // Αποθήκευσε σε final ή member μεταβλητές
+        final String orderNumber = order.orderNumber;
+        final String orderId = order.id;
+        final List<Map<String, Object>> items = order.items;
+
         String[] options = {"💳 Πληρωμή με Κάρτα", "💵 Πληρωμή με Μετρητά"};
         new AlertDialog.Builder(this)
                 .setTitle("Επιλογή Τρόπου Πληρωμής")
                 .setItems(options, (dialog, which) -> {
-                    pendingOrderNumber = order.orderNumber;
-                    pendingOrderId = order.id;
-                    pendingItems = order.items;
-                    // Υπολογισμός συνολικού ποσού
-                    double total = 0.0;
-                    if (order.items != null) {
-                        for (Map<String, Object> item : order.items) {
-                            double price = item.get("price") instanceof Number ? ((Number) item.get("price")).doubleValue() : 0.0;
-                            int qty = item.get("quantity") instanceof Number ? ((Number) item.get("quantity")).intValue() : 1;
-                            total += price * qty;
-                        }
-                    }
-                    pendingAmount = total;
+                    // Αποθήκευσε και στα member πεδία (αν τα χρειάζεσαι αλλού)
+                    pendingOrderNumber = orderNumber;
+                    pendingOrderId = orderId;
+                    pendingItems = items;
+                    pendingAmount = finalTotal;
 
                     if (which == 0) {
-                        startPosPayment(total);
+                        paymentManager.startPosPayment(finalTotal, orderNumber,
+                                "Take Away " + orderNumber, items,
+                                new PaymentManager.PaymentCallback() {
+                                    @Override
+                                    public void onSuccess(com.ads.paragelia.paroxos.SendResponse response) {
+                                        // Εξαγωγή στοιχείων από την απόκριση
+                                        String markStr = String.valueOf(response.getMark());
+                                        String uid = response.getUid() != null ? response.getUid() : "-";
+                                        String authCode = response.getAuthenticationCode() != null ? response.getAuthenticationCode() : "-";
+                                        String qrUrl = response.getQrCode() != null ? response.getQrCode() : "";
+
+                                        printTakeAwayOrder(pendingOrderNumber, pendingItems, markStr, uid, authCode, qrUrl);
+                                        takeawayRef.child(pendingOrderId).removeValue();
+                                        Toast.makeText(TakeAwayOrdersActivity.this, "Η πληρωμή ολοκληρώθηκε", Toast.LENGTH_SHORT).show();
+                                    }
+                                    @Override
+                                    public void onError(String message) {
+                                        Toast.makeText(TakeAwayOrdersActivity.this, "Σφάλμα: " + message, Toast.LENGTH_SHORT).show();
+                                    }
+                                });
                     } else {
-                        startCashPayment(total);
+                        paymentManager.startCashPayment(finalTotal, orderNumber,
+                                "Take Away " + orderNumber, items,
+                                new PaymentManager.PaymentCallback() {
+                                    @Override
+                                    public void onSuccess(com.ads.paragelia.paroxos.SendResponse response) {
+                                        // Εξαγωγή στοιχείων από την απόκριση
+                                        String markStr = String.valueOf(response.getMark());
+                                        String uid = response.getUid() != null ? response.getUid() : "-";
+                                        String authCode = response.getAuthenticationCode() != null ? response.getAuthenticationCode() : "-";
+                                        String qrUrl = response.getQrCode() != null ? response.getQrCode() : "";
+
+                                        printTakeAwayOrder(pendingOrderNumber, pendingItems, markStr, uid, authCode, qrUrl);
+                                        takeawayRef.child(pendingOrderId).removeValue();
+                                        Toast.makeText(TakeAwayOrdersActivity.this, "Η πληρωμή ολοκληρώθηκε", Toast.LENGTH_SHORT).show();
+                                    }
+                                    @Override
+                                    public void onError(String message) {
+                                        Toast.makeText(TakeAwayOrdersActivity.this, "Σφάλμα: " + message, Toast.LENGTH_SHORT).show();
+                                    }
+                                });
                     }
                 })
                 .setNegativeButton("Ακύρωση", null)
                 .show();
     }
 
-    private void startCashPayment(double amount) {
-        pendingPaymentType = 3;
-        pendingPaymentCallback = () -> {
-            printTakeAwayOrder(pendingOrderNumber, pendingItems);
-            takeawayRef.child(pendingOrderId).removeValue();
-            Toast.makeText(this, "Η πληρωμή ολοκληρώθηκε", Toast.LENGTH_SHORT).show();
-        };
-        Toast.makeText(this, "Αποστολή στο myDATA...", Toast.LENGTH_SHORT).show();
-        sendToEpsilonProvider();
-    }
 
-    private void startPosPayment(double amount) {
-        pendingPaymentType = 7;
-        pendingPaymentCallback = () -> {
-            printTakeAwayOrder(pendingOrderNumber, pendingItems);
-            takeawayRef.child(pendingOrderId).removeValue();
-            Toast.makeText(this, "Η πληρωμή ολοκληρώθηκε", Toast.LENGTH_SHORT).show();
-        };
-        Toast.makeText(this, "Αναμονή έγκρισης από Epsilon...", Toast.LENGTH_SHORT).show();
-
-        double netAmount = Math.round((amount / 1.13) * 100.0) / 100.0;
-        double vatAmount = Math.round((amount - netAmount) * 100.0) / 100.0;
-
-        String orderRef = "TA_" + System.currentTimeMillis();
-        String todayDate = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).format(new Date());
-
-        JsonObject requestPaymentObj = new JsonObject();
-        requestPaymentObj.addProperty("externalSystemId", orderRef);
-        requestPaymentObj.addProperty("issuerVatNumber", "000000000");
-        requestPaymentObj.addProperty("invoiceIssueDate", todayDate);
-        requestPaymentObj.addProperty("companyBranch", "0");
-        requestPaymentObj.addProperty("invoiceType", "11.2");
-        requestPaymentObj.addProperty("invoiceSeries", "A");
-        requestPaymentObj.addProperty("invoiceAA", String.valueOf(System.currentTimeMillis() % 100000));
-        requestPaymentObj.addProperty("netValue", netAmount);
-        requestPaymentObj.addProperty("vatAmount", vatAmount);
-        requestPaymentObj.addProperty("totalValue", amount);
-        requestPaymentObj.addProperty("paymentAmount", amount);
-        requestPaymentObj.addProperty("terminalId", "22223729");
-        requestPaymentObj.addProperty("nspCode", "8");
-
-        SharedPreferences prefs = getSharedPreferences("my_prefs", MODE_PRIVATE);
-        String jwtToken = prefs.getString("jwt", null);
-        String dynamicBaseUrl = prefs.getString("baseUrl", null);
-
-        if (jwtToken == null || dynamicBaseUrl == null) {
-            Toast.makeText(this, "Σφάλμα σύνδεσης με Epsilon", Toast.LENGTH_LONG).show();
-            return;
-        }
-        String fullUrl = dynamicBaseUrl + (dynamicBaseUrl.endsWith("/") ? "" : "/") + "api/requestPayment";
-
-        com.ads.paragelia.paroxos.RetrofitClient.getInstance().getSendService()
-                .requestPayment(fullUrl, "Bearer " + jwtToken, "3.0", requestPaymentObj)
-                .enqueue(new Callback<JsonObject>() {
-                    @Override
-                    public void onResponse(Call<JsonObject> call, Response<JsonObject> response) {
-                        if (response.isSuccessful() && response.body() != null) {
-                            try {
-                                JsonObject res = response.body();
-                                String uid = res.has("uid") ? res.get("uid").getAsString() : "";
-                                JsonObject paymentToken = res.getAsJsonObject("paymentToken");
-                                String signature = paymentToken.get("signature").getAsString();
-                                String timestamp = paymentToken.get("timestamp").getAsString();
-
-                                Intent posIntent = com.ads.paragelia.paroxos.EpayHelper.createSaleIntent(
-                                        getPackageName(), amount, netAmount, vatAmount, orderRef, uid, signature, "004", timestamp, "CONTACTLESS", "22223729"
-                                );
-                                if (posIntent != null) startActivityForResult(posIntent, 1001);
-                            } catch (Exception e) {
-                                Toast.makeText(TakeAwayOrdersActivity.this, "Σφάλμα ανάγνωσης PaymentToken", Toast.LENGTH_LONG).show();
-                            }
-                        }
-                    }
-                    @Override public void onFailure(Call<JsonObject> call, Throwable t) {}
-                });
-    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == 1001 && data != null && resultCode == RESULT_OK) {
-            try {
-                String resultJsonStr = data.getStringExtra("gr.epayworldwide.softpos.RESULT");
-                org.json.JSONObject outerJson = new org.json.JSONObject(resultJsonStr);
-                org.json.JSONObject innerJson = new org.json.JSONObject(outerJson.getString("payload"));
-                if (innerJson.getInt("resultCode") == 0) {
-                    sendToEpsilonProvider();
-                }
-            } catch (Exception e) {
-                Toast.makeText(this, "Σφάλμα επεξεργασίας αποτελέσματος POS", Toast.LENGTH_LONG).show();
+        if (requestCode == 1001) {
+            paymentManager.handlePosResult(resultCode, data);
+        }
+    }
+
+
+
+    private void printTakeAwayOrder(String orderNumber, List<Map<String, Object>> items,
+                                    String mark, String uid, String authCode, String qrUrl) {
+        runOnUiThread(() -> Toast.makeText(this, "Εκτύπωση...", Toast.LENGTH_SHORT).show());
+
+        printExecutor.execute(() -> {
+            int printStatus = mPrinter.getPrinterStatus();
+            if (printStatus == SdkResult.SDK_PRN_STATUS_PAPEROUT) {
+                runOnUiThread(() -> Toast.makeText(TakeAwayOrdersActivity.this, "Δεν υπάρχει χαρτί", Toast.LENGTH_LONG).show());
+                return;
             }
-        }
-    }
 
-    private void sendToEpsilonProvider() {
-        SharedPreferences prefs = getSharedPreferences("my_prefs", MODE_PRIVATE);
-        String jwt = prefs.getString("jwt", null);
-        String baseUrl = prefs.getString("baseUrl", null);
+            PrnStrFormat format = new PrnStrFormat();
+            format.setTextSize(25);
+            format.setStyle(PrnTextStyle.NORMAL);
+            format.setFont(PrnTextFont.MONOSPACE);
 
-        if (jwt == null || baseUrl == null) return;
+            format.setAli(Layout.Alignment.ALIGN_CENTER);
+            mPrinter.setPrintAppendString("TAKE AWAY", format);
+            mPrinter.setPrintAppendString("----------------", format);
 
-        double netValue = Math.round((pendingAmount / 1.13) * 100.0) / 100.0;
-        double vatAmount = Math.round((pendingAmount - netValue) * 100.0) / 100.0;
+            format.setAli(Layout.Alignment.ALIGN_NORMAL);
+            mPrinter.setPrintAppendString("Αριθμός: " + orderNumber, format);
+            mPrinter.setPrintAppendString("Ημερομηνία: " +
+                    android.text.format.DateFormat.format("dd/MM/yyyy HH:mm:ss", System.currentTimeMillis()), format);
 
-        JsonObject sourceObj = new JsonObject();
-        JsonObject invoiceObj = new JsonObject();
+            format.setAli(Layout.Alignment.ALIGN_CENTER);
+            mPrinter.setPrintAppendString("----------------", format);
 
-        JsonObject issuerObj = new JsonObject();
-        issuerObj.addProperty("vatNumber", "000000000");
-        issuerObj.addProperty("branch", 0);
-        issuerObj.addProperty("city", "ΠΟΛΗ");
-        issuerObj.addProperty("country", "GR");
-        invoiceObj.add("issuer", issuerObj);
+            format.setAli(Layout.Alignment.ALIGN_NORMAL);
+            mPrinter.setPrintAppendString("Προϊόντα:", format);
 
-        JsonObject counterpartObj = new JsonObject();
-        counterpartObj.add("vatNumber", null);
-        counterpartObj.addProperty("name", "ΠΕΛΑΤΗΣ ΛΙΑΝΙΚΗΣ");
-        counterpartObj.addProperty("country", "GR");
-        counterpartObj.addProperty("branch", 0);
-        invoiceObj.add("counterpart", counterpartObj);
-
-        JsonObject headerObj = new JsonObject();
-        headerObj.addProperty("series", "A");
-        headerObj.addProperty("aa", String.valueOf(System.currentTimeMillis() % 100000));
-        String todayDate = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
-        headerObj.addProperty("issueDate", todayDate);
-        headerObj.addProperty("invoiceType", "11.2");
-        headerObj.addProperty("currency", "EUR");
-        invoiceObj.add("invoiceHeader", headerObj);
-
-        JsonObject line1 = new JsonObject();
-        line1.addProperty("lineNumber", 1);
-        line1.addProperty("quantity", 1);
-        line1.addProperty("entityName", "Take Away " + pendingOrderNumber);
-        line1.addProperty("netValue", netValue);
-        line1.addProperty("vatCategory", 2);
-        line1.addProperty("vatAmount", vatAmount);
-        line1.addProperty("vatPercent", 13);
-        line1.addProperty("totalValue", pendingAmount);
-        line1.addProperty("measurementUnit", 1);
-        line1.addProperty("classificationCategory", "category1_3");
-        line1.addProperty("classificationType", "E3_561_003");
-        JsonArray detailsArray = new JsonArray();
-        detailsArray.add(line1);
-        invoiceObj.add("invoiceDetails", detailsArray);
-
-        JsonArray paymentsArray = new JsonArray();
-        JsonObject payment1 = new JsonObject();
-        payment1.addProperty("type", pendingPaymentType);
-        payment1.addProperty("amount", pendingAmount);
-        paymentsArray.add(payment1);
-        invoiceObj.add("paymentMethods", paymentsArray);
-
-        JsonObject summaryObj = new JsonObject();
-        summaryObj.addProperty("totalNetValue", netValue);
-        summaryObj.addProperty("totalVatAmount", vatAmount);
-        summaryObj.addProperty("totalValue", pendingAmount);
-        invoiceObj.add("invoiceSummary", summaryObj);
-
-        sourceObj.add("invoice", invoiceObj);
-
-        com.ads.paragelia.paroxos.SendRequest sendRequest = new com.ads.paragelia.paroxos.SendRequest(
-                "SYS_" + System.currentTimeMillis(), "eInvoicing", 5, sourceObj
-        );
-
-        String fullUrl = baseUrl + (baseUrl.endsWith("/") ? "" : "/") + "api/send";
-        com.ads.paragelia.paroxos.RetrofitClient.getInstance().getSendService()
-                .sendInvoice(fullUrl, "Bearer " + jwt, "3.0", sendRequest)
-                .enqueue(new Callback<com.ads.paragelia.paroxos.SendResponse>() {
-                    @Override
-                    public void onResponse(Call<com.ads.paragelia.paroxos.SendResponse> call,
-                                           Response<com.ads.paragelia.paroxos.SendResponse> response) {
-                        if (response.isSuccessful() && response.body() != null) {
-                            com.ads.paragelia.paroxos.SendResponse res = response.body();
-                            if (res.getStatus() == 1 || res.getMark() > 0) {
-                                if (pendingPaymentCallback != null) {
-                                    pendingPaymentCallback.onComplete();
-                                    pendingPaymentCallback = null;
-                                }
-                            } else if (res.getStatus() == 0) {
-                                new android.os.Handler().postDelayed(() ->
-                                        checkInvoiceStatus(res.getProcessId(), res.getExternalSystemId()), 1000);
-                            }
-                        }
+            if (items != null) {
+                for (Map<String, Object> item : items) {
+                    String name = (String) item.get("name");
+                    Object qtyObj = item.get("quantity");
+                    int quantity = (qtyObj instanceof Number) ? ((Number) qtyObj).intValue() : 1;
+                    String comment = (String) item.get("comment");
+                    String line = name + "  x" + quantity;
+                    if (comment != null && !comment.isEmpty()) {
+                        line += " (" + comment + ")";
                     }
-                    @Override public void onFailure(Call<com.ads.paragelia.paroxos.SendResponse> call, Throwable t) {}
-                });
-    }
-
-    private void checkInvoiceStatus(String processId, String externalSystemId) {
-        SharedPreferences prefs = getSharedPreferences("my_prefs", MODE_PRIVATE);
-        String jwtToken = prefs.getString("jwt", null);
-        String baseUrl = prefs.getString("baseUrl", null);
-        if (jwtToken == null || baseUrl == null) return;
-
-        String fullUrl = baseUrl + (baseUrl.endsWith("/") ? "" : "/") + "api/get";
-        com.ads.paragelia.paroxos.GetStatusRequest statusReq =
-                new com.ads.paragelia.paroxos.GetStatusRequest(processId, externalSystemId);
-
-        com.ads.paragelia.paroxos.RetrofitClient.getInstance().getSendService()
-                .getInvoiceStatus(fullUrl, "Bearer " + jwtToken, "3.0", statusReq)
-                .enqueue(new Callback<com.ads.paragelia.paroxos.SendResponse>() {
-                    @Override
-                    public void onResponse(Call<com.ads.paragelia.paroxos.SendResponse> call,
-                                           Response<com.ads.paragelia.paroxos.SendResponse> response) {
-                        if (response.isSuccessful() && response.body() != null) {
-                            com.ads.paragelia.paroxos.SendResponse res = response.body();
-                            if (res.getStatus() == 1) {
-                                if (pendingPaymentCallback != null) {
-                                    pendingPaymentCallback.onComplete();
-                                    pendingPaymentCallback = null;
-                                }
-                            } else if (res.getStatus() == 0) {
-                                new android.os.Handler().postDelayed(() ->
-                                        checkInvoiceStatus(processId, externalSystemId), 1000);
-                            }
-                        }
-                    }
-                    @Override public void onFailure(Call<com.ads.paragelia.paroxos.SendResponse> call, Throwable t) {}
-                });
-    }
-
-    private void printTakeAwayOrder(String orderNumber, List<Map<String, Object>> items) {
-        int printStatus = mPrinter.getPrinterStatus();
-        if (printStatus == SdkResult.SDK_PRN_STATUS_PAPEROUT) {
-            Toast.makeText(this, "Δεν υπάρχει χαρτί", Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        PrnStrFormat format = new PrnStrFormat();
-        format.setTextSize(25);
-        format.setStyle(PrnTextStyle.NORMAL);
-        format.setFont(PrnTextFont.MONOSPACE);
-
-        format.setAli(Layout.Alignment.ALIGN_CENTER);
-        mPrinter.setPrintAppendString("TAKE AWAY", format);
-        mPrinter.setPrintAppendString("----------------", format);
-
-        format.setAli(Layout.Alignment.ALIGN_NORMAL);
-        mPrinter.setPrintAppendString("Αριθμός: " + orderNumber, format);
-        mPrinter.setPrintAppendString("Ημερομηνία: " +
-                android.text.format.DateFormat.format("dd/MM/yyyy HH:mm:ss", System.currentTimeMillis()), format);
-
-        format.setAli(Layout.Alignment.ALIGN_CENTER);
-        mPrinter.setPrintAppendString("----------------", format);
-
-        format.setAli(Layout.Alignment.ALIGN_NORMAL);
-        mPrinter.setPrintAppendString("Προϊόντα:", format);
-
-        if (items != null) {
-            for (Map<String, Object> item : items) {
-                String name = (String) item.get("name");
-                Object qtyObj = item.get("quantity");
-                int quantity = (qtyObj instanceof Number) ? ((Number) qtyObj).intValue() : 1;
-                String comment = (String) item.get("comment");
-                String line = name + "  x" + quantity;
-                if (comment != null && !comment.isEmpty()) {
-                    line += " (" + comment + ")";
+                    mPrinter.setPrintAppendString(line, format);
                 }
-                mPrinter.setPrintAppendString(line, format);
             }
-        }
 
-        format.setAli(Layout.Alignment.ALIGN_CENTER);
-        mPrinter.setPrintAppendString("----------------", format);
-        mPrinter.setPrintAppendString("Σας ευχαριστούμε!", format);
-        mPrinter.setPrintAppendString("\n\n\n", format);
+            // ------------------------------------------------
+            // Προσθήκη των στοιχείων του παρόχου (Epsilon)
+            // ------------------------------------------------
+            format.setAli(Layout.Alignment.ALIGN_CENTER);
+            mPrinter.setPrintAppendString("----------------", format);
+            format.setAli(Layout.Alignment.ALIGN_NORMAL);
+            format.setTextSize(20);
+            mPrinter.setPrintAppendString("ΠΑΡΟΧΟΣ: EPSILON DIGITAL", format);
+            mPrinter.setPrintAppendString("ΜΑΡΚ: " + mark, format);
+            mPrinter.setPrintAppendString("UID: " + uid, format);
+            mPrinter.setPrintAppendString("ΚΩΔ. ΑΥΘΕΝΤΙΚΟΠΟΙΗΣΗΣ:", format);
+            mPrinter.setPrintAppendString(authCode, format);
 
-        int ret = mPrinter.setPrintStart();
-        if (ret == SdkResult.SDK_OK) {
-            Toast.makeText(this, "Η απόδειξη εκτυπώθηκε", Toast.LENGTH_SHORT).show();
+            if (qrUrl != null && !qrUrl.isEmpty()) {
+                mPrinter.setPrintAppendString("----------------", format);
+                try {
+                    mPrinter.setPrintAppendQRCode(qrUrl, 200, 200, Layout.Alignment.ALIGN_CENTER);
+                } catch (Exception e) {
+                    mPrinter.setPrintAppendString("QR URL: " + qrUrl, format);
+                }
+            }
+            format.setTextSize(25);
+            // ------------------------------------------------
+
+            format.setAli(Layout.Alignment.ALIGN_CENTER);
+            mPrinter.setPrintAppendString("----------------", format);
+            mPrinter.setPrintAppendString("Σας ευχαριστούμε!", format);
+            mPrinter.setPrintAppendString("\n\n\n", format);
+
+            int ret = mPrinter.setPrintStart();
+
+            runOnUiThread(() -> {
+                if (ret == SdkResult.SDK_OK) {
+                    Toast.makeText(TakeAwayOrdersActivity.this, "Η απόδειξη εκτυπώθηκε", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(TakeAwayOrdersActivity.this, "Σφάλμα εκτύπωσης: " + ret, Toast.LENGTH_LONG).show();
+                }
+            });
+
             if (mPrinter.isSuppoerCutter()) {
                 mPrinter.openPrnCutter((byte) 1);
             }
-        } else {
-            Toast.makeText(this, "Σφάλμα εκτύπωσης: " + ret, Toast.LENGTH_LONG).show();
-        }
+        });
     }
 
     private void cancelOrder(OrderData order) {
@@ -560,5 +429,10 @@ public class TakeAwayOrdersActivity extends AppCompatActivity {
 
     interface PaymentCompleteCallback {
         void onComplete();
+    }
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (printExecutor != null) printExecutor.shutdownNow();
     }
 }

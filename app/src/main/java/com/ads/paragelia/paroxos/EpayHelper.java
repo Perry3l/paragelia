@@ -88,4 +88,33 @@ public class EpayHelper {
             return null;
         }
     }
+    public static Intent createSaleIntentForToken(String myPackageName, double totalAmount,
+                                                  String orderRef, String paymentToken) {
+        try {
+            JSONObject data = new JSONObject();
+            data.put("amount", String.format(Locale.US, "%.2f", totalAmount));
+            data.put("tip", "0.00");
+            data.put("order_reference", orderRef);
+            data.put("payment_token", paymentToken);  // ΠΡΟΣΘΗΚΗ
+
+            JSONObject extras = new JSONObject();
+            extras.put("provider_id", "epsilon");     // αν χρειάζεται
+            data.put("extras", extras);
+
+            JSONObject config = new JSONObject();
+            config.put("operation", "sale");
+            config.put("data", data);
+
+            JSONObject root = new JSONObject();
+            root.put("payload", config.toString());
+            root.put("signature", "");
+
+            Intent intent = new Intent(TARGET_ACTION);
+            intent.setPackage(TARGET_PACKAGE);
+            intent.putExtra(CONFIG_KEY, root.toString());
+            return intent;
+        } catch (Exception e) {
+            return null;
+        }
+    }
 }
