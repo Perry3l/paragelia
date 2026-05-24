@@ -532,16 +532,44 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         if (isSubmitting) return;
         isSubmitting = true;
 
-        btnSubmitOnly.setEnabled(false);
-        btnSubmitAndPrint.setEnabled(false);
-
         if (selectedItems.isEmpty()) {
             Toast.makeText(getContext(), "Δεν προστέθηκε κανένα προϊόν", Toast.LENGTH_SHORT).show();
             resetButtons();
             return;
         }
 
-        // 1. Ομαδοποίηση items ανά printerTarget (από την κατηγορία τους)
+        // ---------- ORDER-ONLY MODE ----------
+        if (isOrderOnlyMode()) {
+            Map<String, List<OrderItem>> itemsByTarget = new HashMap<>();
+            for (OrderItem item : selectedItems) {
+                String target = "RECEIPT";
+                if (item.category != null) {
+                    target = MenuRepository.getInstance().getCategoryPrinterTarget(item.category);
+                }
+                itemsByTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(item);
+            }
+
+            for (Map.Entry<String, List<OrderItem>> entry : itemsByTarget.entrySet()) {
+                String target = entry.getKey();
+                List<OrderItem> itemsForTarget = entry.getValue();
+                List<Map<String, Object>> itemsMap = new ArrayList<>();
+                for (OrderItem item : itemsForTarget) {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("name", item.name);
+                    map.put("quantity", item.quantity);
+                    map.put("price", item.price);
+                    map.put("comment", item.comment);
+                    map.put("vatPercent", item.vatPercent);
+                    itemsMap.add(map);
+                }
+                saveReceiptDirect(itemsMap, target);
+            }
+            dismiss();
+            return;
+        }
+
+        // ---------- NORMAL MODE (fiscal receipts, Epsilon, payments) ----------
+        // 1. Group items by printer target
         Map<String, List<OrderItem>> itemsByTarget = new HashMap<>();
         for (OrderItem item : selectedItems) {
             String target = "RECEIPT";
@@ -551,7 +579,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             itemsByTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(item);
         }
 
-        // 2. Για κάθε target, ξεχωριστή ροή
+        // 2. For each target, handle separately
         for (Map.Entry<String, List<OrderItem>> entry : itemsByTarget.entrySet()) {
             String target = entry.getKey();
             List<OrderItem> itemsForTarget = entry.getValue();
@@ -567,17 +595,35 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                 itemsMap.add(map);
             }
 
-            // Αποστολή στην ΑΑΔΕ μόνο για RECEIPT και dine-in
+            // Only RECEIPT target goes through Epsilon (fiscal)
             if (target.equals("RECEIPT") && !isTakeAway() && !isDelivery()) {
-                // Χρησιμοποιούμε την υπάρχουσα saveToFirebaseAndFinish (θα την τροποποιήσουμε παρακάτω)
-                saveToFirebaseAndFinish(itemsMap, printReceipt, null, target);
+                // Determine if table is already open in AADE
+                boolean isAlreadyOpen = isTableAlreadyOpen;
+
+                EpsilonIntegrationHelper.sendOrderSlip86(getContext(), tableNumber, itemsMap, isAlreadyOpen,
+                        new EpsilonIntegrationHelper.CallbackWithResult<SendResponse>() {
+                            @Override
+                            public void onSuccess(SendResponse response) {
+                                saveToFirebaseAndFinish(itemsMap, printReceipt, response, target);
+                            }
+
+                            @Override
+                            public void onError(String message) {
+                                Toast.makeText(getContext(), "Σφάλμα Epsilon: " + message, Toast.LENGTH_LONG).show();
+                                resetButtons();
+                            }
+                        });
             } else {
-                // KITCHEN, BAR, TAKEAWAY, DELIVERY → απευθείας εκτύπωση χωρίς Epsilon
+                // KITCHEN, BAR, TAKEAWAY, DELIVERY → print without Epsilon
                 saveReceiptDirect(itemsMap, target);
             }
         }
 
-        dismiss();
+        // Dismiss after all targets are processed (only if no Epsilon call is pending)
+        // The Epsilon call will dismiss inside saveToFirebaseAndFinish.
+        if (!itemsByTarget.containsKey("RECEIPT") || isTakeAway() || isDelivery()) {
+            dismiss();
+        }
     }
 
     private void saveReceiptDirect(List<Map<String, Object>> items, String target) {
@@ -1162,5 +1208,10 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
     public void onDestroyView() {
         super.onDestroyView();
         searchHandler.removeCallbacks(searchRunnable);
+    }
+    private boolean isOrderOnlyMode() {
+        if (getContext() == null) return false;
+        SharedPreferences prefs = getContext().getSharedPreferences(SettingsActivity.PREFS_ORDER_MODE, Context.MODE_PRIVATE);
+        return prefs.getBoolean(SettingsActivity.KEY_ORDER_ONLY_MODE, false);
     }
 }

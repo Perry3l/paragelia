@@ -89,6 +89,14 @@ public class ActiveTablesActivity extends BaseActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // If order-only mode is enabled, do not allow access to tables management
+        SharedPreferences orderPrefs = getSharedPreferences(SettingsActivity.PREFS_ORDER_MODE, MODE_PRIVATE);
+        boolean orderOnlyMode = orderPrefs.getBoolean(SettingsActivity.KEY_ORDER_ONLY_MODE, false);
+        if (orderOnlyMode) {
+            Toast.makeText(this, "Η λειτουργία μόνο παραγγελιών είναι ενεργή.\nΔεν επιτρέπεται η διαχείριση τραπεζιών.", Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
         setContentView(R.layout.activity_active_tables);
         showMemoryOverlay();
         tablesRecyclerView = findViewById(R.id.tablesRecyclerView);
@@ -386,12 +394,38 @@ public class ActiveTablesActivity extends BaseActivity {
 
             @Override
             public void onPayClicked(ActiveTableAdapter.TableCardData data) {
+                // If the table is orange (ordered, no fiscal receipt yet)
+                if ("ordered".equals(data.status)) {
+                    // Show choice dialog: temporary receipt or final payment
+                    new AlertDialog.Builder(ActiveTablesActivity.this)
+                            .setTitle("Επιλογή ενέργειας")
+                            .setMessage("Το τραπέζι δεν έχει εκδοθεί ακόμα. Τι θέλετε να κάνετε;")
+                            .setPositiveButton("Προσωρινή Απόδειξη", (dialog, which) -> {
+                                // Call the existing temporary receipt logic (same as "Print Temp" button)
+                                onPrintTempClicked(data);
+                            })
+                            .setNegativeButton("Τελική Πληρωμή", (dialog, which) -> {
+                                // Proceed to normal payment flow (split / full payment)
+                                proceedToPayment(data);
+                            })
+                            .setNeutralButton("Ακύρωση", null)
+                            .show();
+                    return;
+                }
+
+                // For non‑orange tables (already printed) – normal payment flow
+                proceedToPayment(data);
+            }
+
+            // Helper method to encapsulate the existing payment logic
+            private void proceedToPayment(ActiveTableAdapter.TableCardData data) {
                 pendingTableData = data.tableData;
                 pendingTableNumber = data.tableNumber;
                 pendingOrderDetails = data.details;
                 double totalAmount = calculateTotalAmount(data.tableData);
                 pendingAmount = totalAmount;
                 pendingPaymentItems = extractAllItems(data.tableData);
+
                 new AlertDialog.Builder(ActiveTablesActivity.this)
                         .setTitle("Διαχωρισμός Λογαριασμού;")
                         .setMessage("Το συνολικό ποσό είναι €" + String.format("%.2f", totalAmount) +
@@ -449,6 +483,30 @@ public class ActiveTablesActivity extends BaseActivity {
 
             @Override
             public void onPrintTempClicked(ActiveTableAdapter.TableCardData data) {
+                // Only show the choice for orange tables (no fiscal receipt yet)
+                if ("ordered".equals(data.status)) {
+                    new AlertDialog.Builder(ActiveTablesActivity.this)
+                            .setTitle("Επιλογή Αναφοράς")
+                            .setMessage("Τι θέλετε να εκτυπωθεί;")
+                            .setPositiveButton("Προσωρινή Απόδειξη", (dialog, which) -> {
+                                performPrintTempReceipt(data);
+                            })
+                            .setNegativeButton("Take Away (Τελική Πληρωμή)", (dialog, which) -> {
+                                // Reuse the existing payment logic for final receipt
+                                proceedToPaymentForOrangeTable(data);
+                            })
+                            .show();
+                    return;
+                }
+                // For white tables (already printed) – just print the temporary receipt as before
+                performPrintTempReceipt(data);
+            }
+
+            /**
+             * Prints a temporary receipt (pro‑forma) without involving Epsilon Digital.
+             * This is the original logic of onPrintTempClicked.
+             */
+            private void performPrintTempReceipt(ActiveTableAdapter.TableCardData data) {
                 // Συλλέγουμε όλα τα διαθέσιμα MARK του τραπεζιού
                 List<String> accumulatedMarks = new ArrayList<>();
                 for (Map.Entry<String, Object> entry : data.tableData.entrySet()) {
@@ -467,10 +525,42 @@ public class ActiveTablesActivity extends BaseActivity {
                             // Στέλνουμε τα είδη ΚΑΙ τη λίστα με τα επίσημα MARK στον εκτυπωτή
                             data.tableData.put("accumulated_marks", accumulatedMarks);
                             sendTempReceiptToPrinter(data.tableNumber, data.tableData);
-
                             Toast.makeText(ActiveTablesActivity.this, "Εκτύπωση Επίσημης Αναφοράς Τραπεζιού", Toast.LENGTH_SHORT).show();
                             loadActiveTables();
                         });
+            }
+
+            /**
+             * Proceeds directly to final payment (split / full payment) for an orange table.
+             * This uses the same logic as onPayClicked but without the intermediate choice dialog.
+             */
+            private void proceedToPaymentForOrangeTable(ActiveTableAdapter.TableCardData data) {
+                pendingTableData = data.tableData;
+                pendingTableNumber = data.tableNumber;
+                pendingOrderDetails = data.details;
+                double totalAmount = calculateTotalAmount(data.tableData);
+                pendingAmount = totalAmount;
+                pendingPaymentItems = extractAllItems(data.tableData);
+
+                new AlertDialog.Builder(ActiveTablesActivity.this)
+                        .setTitle("Διαχωρισμός Λογαριασμού;")
+                        .setMessage("Το συνολικό ποσό είναι €" + String.format("%.2f", totalAmount) +
+                                "\n\nΘέλετε να διαχωρίσετε τον λογαριασμό;")
+                        .setPositiveButton("Ναι, διαχωρισμός", (dialog, which) -> {
+                            CurrentTableHolder.set(data.tableNumber, data.tableData);
+                            Intent intent = new Intent(ActiveTablesActivity.this, SplitItemsActivity.class);
+                            intent.putExtra("table_number", data.tableNumber);
+                            intent.putExtra("is_partial", false);
+                            startActivityForResult(intent, REQUEST_SPLIT_ITEMS);
+                        })
+                        .setNegativeButton("Όχι, ολόκληρο", (dialog, which) -> {
+                            showPaymentMethodDialog("Ολόκληρο το ποσό (€" + String.format("%.2f", totalAmount) + ")",
+                                    () -> clearTableAndMergedSource(data.tableNumber, () ->
+                                            Toast.makeText(ActiveTablesActivity.this,
+                                                    "Ο λογαριασμός εξοφλήθηκε!", Toast.LENGTH_SHORT).show()
+                                    ));
+                        })
+                        .show();
             }
 
             // ========== ΠΡΟΣΘΗΚΗ ==========

@@ -4,6 +4,7 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.text.InputType;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -13,7 +14,6 @@ import androidx.appcompat.widget.SwitchCompat;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
 import java.util.Map;
@@ -30,6 +30,11 @@ public class SettingsActivity extends BaseActivity {
     private SharedPreferences prefsa;
     public static final String KEY_TAKEAWAY_ENABLED = "takeaway_enabled";
 
+    // Order-Only Mode constants
+    public static final String PREFS_ORDER_MODE = "order_mode_prefs";
+    public static final String KEY_ORDER_ONLY_MODE = "order_only_mode";
+    private static final String ORDER_ONLY_CODE = "1234";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -39,7 +44,7 @@ public class SettingsActivity extends BaseActivity {
         btnSave = findViewById(R.id.btnSave);
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         showMemoryOverlay();
-        // Φόρτωση αποθηκευμένου ονόματος
+
         String savedName = prefs.getString(KEY_DEVICE_NAME, "");
         etDeviceName.setText(savedName);
 
@@ -70,14 +75,13 @@ public class SettingsActivity extends BaseActivity {
 
         switchMemoryOverlay.setOnCheckedChangeListener((buttonView, isChecked) -> {
             prefsOverlay.edit().putBoolean("show_memory_overlay", isChecked).apply();
-            // Αν θες να φανεί άμεσα η αλλαγή στην ίδια οθόνη, κάνε recreate
             recreate();
         });
 
         switchTakeAway = findViewById(R.id.switchTakeAway);
         prefsa = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
-        boolean takeawayEnabled = prefsa.getBoolean(KEY_TAKEAWAY_ENABLED, true); // default true
+        boolean takeawayEnabled = prefsa.getBoolean(KEY_TAKEAWAY_ENABLED, true);
         switchTakeAway.setChecked(takeawayEnabled);
 
         switchTakeAway.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -85,7 +89,6 @@ public class SettingsActivity extends BaseActivity {
             Toast.makeText(this, isChecked ? "Το Take Away ενεργοποιήθηκε" : "Το Take Away απενεργοποιήθηκε", Toast.LENGTH_SHORT).show();
         });
 
-        // ----- ΝΕΟ ΚΟΥΜΠΙ: Διάσπαση όλων των ενώσεων -----
         Button btnResolveAll = findViewById(R.id.btnResolveAllMerges);
         btnResolveAll.setOnClickListener(v -> {
             new AlertDialog.Builder(this)
@@ -99,6 +102,35 @@ public class SettingsActivity extends BaseActivity {
 
         Button btnRestart = findViewById(R.id.btnRestartApp);
         btnRestart.setOnClickListener(v -> restartApp());
+
+        // ----- NEW: Order-Only Mode Toggle Button -----
+        Button btnToggleOrderMode = findViewById(R.id.btnToggleOrderMode);
+        btnToggleOrderMode.setOnClickListener(v -> {
+            SharedPreferences orderPrefs = getSharedPreferences(PREFS_ORDER_MODE, MODE_PRIVATE);
+            boolean isEnabled = orderPrefs.getBoolean(KEY_ORDER_ONLY_MODE, false);
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle(isEnabled ? "Απενεργοποίηση Λειτουργίας Μόνο Παραγγελιών" : "Ενεργοποίηση Λειτουργίας Μόνο Παραγγελιών");
+
+            final EditText input = new EditText(this);
+            input.setInputType(InputType.TYPE_CLASS_NUMBER);
+            input.setHint("Κωδικός");
+            builder.setView(input);
+
+            builder.setPositiveButton("OK", (dialog, which) -> {
+                String code = input.getText().toString();
+                if (ORDER_ONLY_CODE.equals(code)) {
+                    boolean newState = !isEnabled;
+                    orderPrefs.edit().putBoolean(KEY_ORDER_ONLY_MODE, newState).apply();
+                    Toast.makeText(this, newState ? "Λειτουργία μόνο παραγγελιών ΕΝΕΡΓΗ" : "Λειτουργία μόνο παραγγελιών ΑΠΕΝΕΡΓΟΠΟΙΗΘΗΚΕ", Toast.LENGTH_LONG).show();
+                    restartApp();
+                } else {
+                    Toast.makeText(this, "Λάθος κωδικός", Toast.LENGTH_SHORT).show();
+                }
+            });
+            builder.setNegativeButton("Ακύρωση", null);
+            builder.show();
+        });
     }
 
     private void resolveAllMerges() {
@@ -111,10 +143,8 @@ public class SettingsActivity extends BaseActivity {
                     if (tableData == null) continue;
 
                     if (tableData.containsKey("merged_to")) {
-                        // Είναι πηγή – απλώς διαγράφουμε το merged_to (καθαρίζει ολόκληρο τον κόμβο)
                         tableSnap.getRef().removeValue();
                     } else if (tableData.containsKey("current_order")) {
-                        // Είναι προορισμός – αφαιρούμε το merged_from
                         Map<String, Object> cur = (Map<String, Object>) tableData.get("current_order");
                         if (cur != null && cur.containsKey("merged_from")) {
                             tableSnap.getRef().child("current_order").child("merged_from").removeValue();
@@ -143,7 +173,6 @@ public class SettingsActivity extends BaseActivity {
                             intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
                             startActivity(intent);
                         }
-
                     }, 300);
                 })
                 .setNegativeButton("Όχι", null)
