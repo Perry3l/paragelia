@@ -75,25 +75,18 @@ public class MainActivity extends BaseActivity {
             finish();
             return;
         }
-        // ------------------------------------------------------------
-// Order-Only Mode: hide all payment/table management cards
+// ------------------------------------------------------------
+// Order-Only Mode: hide only payment-related cards
 // ------------------------------------------------------------
         SharedPreferences orderPrefs = getSharedPreferences(SettingsActivity.PREFS_ORDER_MODE, MODE_PRIVATE);
         boolean orderOnlyMode = orderPrefs.getBoolean(SettingsActivity.KEY_ORDER_ONLY_MODE, false);
 
         if (orderOnlyMode) {
-            // Hide cards that are not needed for pure order taking
-            CardView cardTables = findViewById(R.id.cardTables);
+            // Keep cardTables and cardReports visible
             CardView cardHistory = findViewById(R.id.cardHistory);
-            CardView cardReports = findViewById(R.id.cardReports);
             CardView cardTakeAway = findViewById(R.id.cardTakeAway);
-
-            cardTables.setVisibility(View.GONE);
             cardHistory.setVisibility(View.GONE);
-            cardReports.setVisibility(View.GONE);
             cardTakeAway.setVisibility(View.GONE);
-
-            // Optionally change the NewOrder button text or behaviour (already fine)
         }
 
         // ------------------------------------------------------------

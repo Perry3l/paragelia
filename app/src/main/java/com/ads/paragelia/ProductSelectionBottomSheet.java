@@ -91,6 +91,15 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         rvSelectedItems = view.findViewById(R.id.rvSelectedItems);
         btnSubmitOnly = view.findViewById(R.id.btnSubmitOnly);
         btnSubmitAndPrint = view.findViewById(R.id.btnSubmitAndPrint);
+        // In order-only mode, show only one button (hide the print button)
+        if (isOrderOnlyMode()) {
+            btnSubmitAndPrint.setVisibility(View.GONE);
+            // Optionally make the remaining button full width
+            btnSubmitOnly.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+        }
         etSearch = view.findViewById(R.id.etSearch);
 
         etSearch.addTextChangedListener(new TextWatcher() {
@@ -539,32 +548,65 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         }
 
         // ---------- ORDER-ONLY MODE ----------
+        // --- ORDER-ONLY MODE: save to active_bills (orange status) + print ---
         if (isOrderOnlyMode()) {
-            Map<String, List<OrderItem>> itemsByTarget = new HashMap<>();
+            // 1. Save order to Firebase (same as normal but without Epsilon)
+            List<Map<String, Object>> itemsMap = new ArrayList<>();
             for (OrderItem item : selectedItems) {
-                String target = "RECEIPT";
-                if (item.category != null) {
-                    target = MenuRepository.getInstance().getCategoryPrinterTarget(item.category);
-                }
-                itemsByTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(item);
+                Map<String, Object> map = new HashMap<>();
+                map.put("name", item.name);
+                map.put("quantity", item.quantity);
+                map.put("price", item.price);
+                map.put("comment", item.comment);
+                map.put("vatPercent", item.vatPercent);
+                itemsMap.add(map);
             }
 
-            for (Map.Entry<String, List<OrderItem>> entry : itemsByTarget.entrySet()) {
-                String target = entry.getKey();
-                List<OrderItem> itemsForTarget = entry.getValue();
-                List<Map<String, Object>> itemsMap = new ArrayList<>();
-                for (OrderItem item : itemsForTarget) {
-                    Map<String, Object> map = new HashMap<>();
-                    map.put("name", item.name);
-                    map.put("quantity", item.quantity);
-                    map.put("price", item.price);
-                    map.put("comment", item.comment);
-                    map.put("vatPercent", item.vatPercent);
-                    itemsMap.add(map);
-                }
-                saveReceiptDirect(itemsMap, target);
+            DatabaseReference orderRef = getOrderRef();
+            String orderId = orderRef.push().getKey();
+            Map<String, Object> orderUpdate = new HashMap<>();
+            orderUpdate.put("items", itemsMap);
+            orderUpdate.put("timestamp", System.currentTimeMillis());
+            orderUpdate.put("status", "ordered");  // orange colour
+            if (isTakeAway() || isDelivery()) {
+                orderUpdate.put("orderNumber", tableNumber);
+            } else {
+                orderUpdate.put("tableNumber", Integer.parseInt(tableNumber));
             }
-            dismiss();
+            // No epsilon fields
+
+            orderRef.child(orderId != null ? orderId : "temp").setValue(orderUpdate)
+                    .addOnSuccessListener(aVoid -> {
+                        // 2. Send to printer for each target (same as before)
+                        Map<String, List<OrderItem>> itemsByTarget = new HashMap<>();
+                        for (OrderItem item : selectedItems) {
+                            String target = "RECEIPT";
+                            if (item.category != null) {
+                                target = MenuRepository.getInstance().getCategoryPrinterTarget(item.category);
+                            }
+                            itemsByTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(item);
+                        }
+                        for (Map.Entry<String, List<OrderItem>> entry : itemsByTarget.entrySet()) {
+                            String target = entry.getKey();
+                            List<OrderItem> itemsForTarget = entry.getValue();
+                            List<Map<String, Object>> printItems = new ArrayList<>();
+                            for (OrderItem item : itemsForTarget) {
+                                Map<String, Object> map = new HashMap<>();
+                                map.put("name", item.name);
+                                map.put("quantity", item.quantity);
+                                map.put("price", item.price);
+                                map.put("comment", item.comment);
+                                map.put("vatPercent", item.vatPercent);
+                                printItems.add(map);
+                            }
+                            saveReceiptDirect(printItems, target);
+                        }
+                        dismiss();
+                    })
+                    .addOnFailureListener(e -> {
+                        resetButtons();
+                        Toast.makeText(getContext(), "Σφάλμα αποθήκευσης: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    });
             return;
         }
 
