@@ -40,6 +40,7 @@ public class MainActivity extends BaseActivity {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_main);
+        new AppUpdateManager(this).checkForUpdates();
         showMemoryOverlay();
 
         // ------------------------------------------------------------
@@ -163,6 +164,15 @@ public class MainActivity extends BaseActivity {
         } else {
             cardTakeAway.setVisibility(View.GONE);
         }
+        // Έλεγχος για Delivery
+        boolean deliveryEnabled = prefsa.getBoolean(SettingsActivity.KEY_DELIVERY_ENABLED, true);
+        CardView cardDelivery = findViewById(R.id.cardDelivery); // χρησιμοποιήστε το σωστό ID
+        if (deliveryEnabled) {
+            cardDelivery.setVisibility(View.VISIBLE);
+            // Αν υπάρχει listener, τοποθετήστε τον εδώ (π.χ. cardDelivery.setOnClickListener(...))
+        } else {
+            cardDelivery.setVisibility(View.GONE);
+        }
 
         cardTables.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, ActiveTablesActivity.class);
@@ -179,10 +189,7 @@ public class MainActivity extends BaseActivity {
             startActivity(intent);
         });
 
-        // ------------------------------------------------------------
-        // 5. Έλεγχος ενημερώσεων
-        // ------------------------------------------------------------
-        new UpdateChecker(this, BASE_URL).checkForUpdates();
+
     }
 
     // --- ΕΝΗΜΕΡΩΜΕΝΗ ΜΕΘΟΔΟΣ ΓΙΑ ONLINE ΠΑΡΑΓΓΕΛΙΕΣ ---

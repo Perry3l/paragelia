@@ -66,10 +66,10 @@ public class TableOrderActivity extends BaseActivity {
         tvCartTotal = findViewById(R.id.tvCartTotal);
 
         // Στην onCreate() μετά τον ορισμό των views
-        Button btnFinishAndPrint86 = findViewById(R.id.btnFinishAndPrint86);
+        //Button btnFinishAndPrint86 = findViewById(R.id.btnFinishAndPrint86);
         Button btnReportOpenTable = findViewById(R.id.btnReportOpenTable);
 
-        btnFinishAndPrint86.setOnClickListener(v -> finishOrderWith86Slip());
+        //btnFinishAndPrint86.setOnClickListener(v -> finishOrderWith86Slip());
         btnReportOpenTable.setOnClickListener(v -> showTableReportOptions());
 
         tvTableTitle.setText("Τραπέζι " + tableNumber);

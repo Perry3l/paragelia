@@ -60,7 +60,7 @@ public class PrinterManager {
                 obj.put("name", p.getName());
                 obj.put("type", p.getType());
                 obj.put("target", p.getTarget());
-                // Επιπλέον στοιχεία ανά τύπο
+                obj.put("imageMode", p.isImageMode()); // ΝΕΟ
                 if (p instanceof NetworkPrinter) {
                     obj.put("ip", ((NetworkPrinter)p).getIp());
                     obj.put("port", ((NetworkPrinter)p).getPort());
@@ -85,15 +85,17 @@ public class PrinterManager {
                 String type = obj.getString("type");
                 String name = obj.getString("name");
                 String target = obj.getString("target");
+                boolean imageMode = obj.optBoolean("imageMode", false);
 
                 switch (type) {
                     case "IP":
                         String ip = obj.getString("ip");
                         int port = obj.getInt("port");
-                        addPrinter(new NetworkPrinter(name, target, ip, port));
+                        NetworkPrinter np = new NetworkPrinter(name, target, ip, port);
+                        np.setImageMode(imageMode);
+                        addPrinter(np);
                         break;
                     case "USB":
-                        // Αποθήκευση του profile για αργότερο ταίριασμα
                         int vid = obj.optInt("vid", -1);
                         int pid = obj.optInt("pid", -1);
                         if (vid >= 0 && pid >= 0) {
@@ -102,9 +104,11 @@ public class PrinterManager {
                             profile.target = target;
                             profile.vid = vid;
                             profile.pid = pid;
+                            profile.imageMode = imageMode;
                             pendingUsbProfiles.add(profile);
                         }
                         break;
+                    // case "BUILTIN" – Δεν δημιουργούμε BuiltinPrinter εδώ. Θα το κάνει η PrinterActivity.
                 }
             }
         } catch (Exception ignored) {}
@@ -117,6 +121,7 @@ public class PrinterManager {
         public String target;
         public int vid;
         public int pid;
+        public boolean imageMode; // ΝΕΟ
     }
 
     public List<UsbPrinterProfile> getPendingUsbProfiles() {

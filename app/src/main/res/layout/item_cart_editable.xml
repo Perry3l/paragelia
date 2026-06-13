@@ -64,7 +64,7 @@
                 android:id="@+id/etCartItemComment"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="Σχόλια (π.χ. χωρίς ζάχαρη)"
+                android:hint="Σχόλια"
                 android:inputType="text"
                 android:textSize="12sp" />
         </com.google.android.material.textfield.TextInputLayout>

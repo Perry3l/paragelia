@@ -90,6 +90,13 @@
                     android:layout_height="wrap_content"
                     android:text="Ενεργοποίηση Take Away"
                     android:layout_marginBottom="12dp" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchDelivery"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Ενεργοποίηση Delivery"
+                    android:textSize="16sp"
+                    android:layout_marginTop="16dp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnResolveAllMerges"
@@ -120,6 +127,13 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Επανεκκίνηση Εφαρμογής" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnChangeStoreCode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Αλλαγή κωδικού καταστήματος"
+                    android:layout_marginTop="16dp"
+                    style="@style/Widget.Material3.Button.OutlinedButton" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
     </LinearLayout>

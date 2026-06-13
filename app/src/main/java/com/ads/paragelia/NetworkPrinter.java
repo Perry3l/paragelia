@@ -1,6 +1,7 @@
 // NetworkPrinter.java
 package com.ads.paragelia;
 
+import android.graphics.Bitmap;
 import android.util.Log;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -10,8 +11,8 @@ import java.net.Socket;
 public class NetworkPrinter implements PrinterDevice {
     private String name, ip;
     private String target;
-    @Override public void setTarget(String target) { this.target = target; }
     private int port;
+    private boolean imageMode = false;   // ΝΕΟ
     private Socket socket;
     private OutputStream outputStream;
 
@@ -22,11 +23,14 @@ public class NetworkPrinter implements PrinterDevice {
         this.port = port;
     }
 
+    @Override public void setTarget(String target) { this.target = target; }
+    @Override public void setImageMode(boolean enabled) { this.imageMode = enabled; }
+    @Override public boolean isImageMode() { return imageMode; }
+
     @Override public String getName() { return name; }
     @Override public String getType() { return "IP"; }
     @Override public String getTarget() { return target; }
 
-    // 📌 Προσθήκη getters για αποθήκευση
     public String getIp() { return ip; }
     public int getPort() { return port; }
 
@@ -66,6 +70,17 @@ public class NetworkPrinter implements PrinterDevice {
             Log.e("NetworkPrinter", "Σφάλμα εκτύπωσης", e);
             try { socket.close(); } catch (IOException ignored) {}
             socket = null;
+        }
+    }
+
+    public void printBitmap(Bitmap bitmap) {
+        if (!connect()) return;
+        byte[] data = BitmapPrinterHelper.bitmapToEscPos(bitmap);
+        try {
+            outputStream.write(data);
+            outputStream.flush();
+        } catch (IOException e) {
+            Log.e("NetworkPrinter", "Σφάλμα εκτύπωσης bitmap", e);
         }
     }
 

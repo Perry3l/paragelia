@@ -8,9 +8,11 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
 import android.os.Bundle;
+import android.text.Layout;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -46,14 +48,18 @@ public class PrinterActivity extends BaseActivity {
     private Printer mPrinter;
     private PrinterManager printerManager;
     private UsbPrinterManager usbPrinterManager;
+    public Printer getPrinter() { return mPrinter; }
 
     private RecyclerView rvPrinters;
     private PrinterAdapter printerAdapter;
+    private boolean usbReceiverRegistered = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_printer);
+        Log.e("UPDATE_TEST", "PrinterActivity.onCreate - about to call checkForUpdates");
+        new AppUpdateManager(this).checkForUpdates();
         showMemoryOverlay();
 
         tvStatus = findViewById(R.id.tvStatus);
@@ -95,7 +101,7 @@ public class PrinterActivity extends BaseActivity {
             printerManager.addPrinter(new BuiltinPrinter(mPrinter, "Ενσωματωμένος", "RECEIPT"));
         }
 
-        // RecyclerView & Adapter (ΑΡΧΙΚΟΠΟΙΗΣΗ ΠΡΙΝ ΤΗ ΣΑΡΩΣΗ USB)
+        // RecyclerView & Adapter
         rvPrinters.setLayoutManager(new LinearLayoutManager(this));
         printerAdapter = new PrinterAdapter(printerManager.getPrinters(), new PrinterAdapter.OnPrinterActionListener() {
             @Override
@@ -115,7 +121,6 @@ public class PrinterActivity extends BaseActivity {
         });
         rvPrinters.setAdapter(printerAdapter);
 
-        // USB σάρωση (ΑΦΟΥ έχει αρχικοποιηθεί ο adapter)
         usbPrinterManager = new UsbPrinterManager(this);
         ensureUsbPrintersInList();
         scanAndAddUsbPrinters();
@@ -123,17 +128,27 @@ public class PrinterActivity extends BaseActivity {
         // Buttons
         findViewById(R.id.btnAddNetworkPrinter).setOnClickListener(v -> showAddNetworkPrinterDialog());
         findViewById(R.id.btnViewTables).setOnClickListener(v -> startActivity(new Intent(this, ActiveTablesActivity.class)));
-        Button btnTakeAway = findViewById(R.id.btnTakeAway);
+
         SharedPreferences prefsa = getSharedPreferences(PrinterSettingsActivity.PREFS_NAME, MODE_PRIVATE);
         boolean takeawayEnabled = prefsa.getBoolean(PrinterSettingsActivity.KEY_TAKEAWAY_ENABLED, false);
+        boolean deliveryEnabled = prefsa.getBoolean(PrinterSettingsActivity.KEY_DELIVERY_ENABLED, false);
+
+        Button btnTakeAway = findViewById(R.id.btnTakeAway);
+        Button btnTakeAwayOrders = findViewById(R.id.btnTakeAwayOrders);
+        Button btnDelivery = findViewById(R.id.btnDelivery);
+        Button btnDeliveryOrders = findViewById(R.id.btnDeliveryOrders);
+
         btnTakeAway.setVisibility(takeawayEnabled ? View.VISIBLE : View.GONE);
+        btnTakeAwayOrders.setVisibility(takeawayEnabled ? View.VISIBLE : View.GONE);
+        btnDelivery.setVisibility(deliveryEnabled ? View.VISIBLE : View.GONE);
+        btnDeliveryOrders.setVisibility(deliveryEnabled ? View.VISIBLE : View.GONE);
+
         btnTakeAway.setOnClickListener(v -> startActivity(new Intent(this, TakeAwayActivity.class)));
-        findViewById(R.id.btnTakeAwayOrders).setOnClickListener(v -> startActivity(new Intent(this, TakeAwayOrdersActivity.class)));
-        findViewById(R.id.btnDelivery).setOnClickListener(v -> startActivity(new Intent(this, DeliveryActivity.class)));
-        findViewById(R.id.btnDeliveryOrders).setOnClickListener(v -> startActivity(new Intent(this, DeliveryOrdersActivity.class)));
+        btnTakeAwayOrders.setOnClickListener(v -> startActivity(new Intent(this, TakeAwayOrdersActivity.class)));
+        btnDelivery.setOnClickListener(v -> startActivity(new Intent(this, DeliveryActivity.class)));
+        btnDeliveryOrders.setOnClickListener(v -> startActivity(new Intent(this, DeliveryOrdersActivity.class)));
         findViewById(R.id.btnSettings).setOnClickListener(v -> startActivity(new Intent(this, PrinterSettingsActivity.class)));
 
-        // Κουμπί χειροκίνητης σάρωσης USB
         Button btnScanUsb = findViewById(R.id.btnScanUsb);
         if (btnScanUsb != null) {
             btnScanUsb.setOnClickListener(v -> scanAndAddUsbPrinters());
@@ -146,7 +161,6 @@ public class PrinterActivity extends BaseActivity {
     private void scanAndAddUsbPrinters() {
         ensureUsbPrintersInList();
         List<UsbDevice> devices = usbPrinterManager.findPrinters();
-        Log.d(TAG, "Βρέθηκαν " + devices.size() + " υποψήφιες συσκευές USB εκτυπωτή");
         if (devices.isEmpty()) {
             runOnUiThread(() -> Toast.makeText(this, "Δεν βρέθηκε κανένας USB εκτυπωτής", Toast.LENGTH_LONG).show());
             return;
@@ -159,7 +173,6 @@ public class PrinterActivity extends BaseActivity {
             }
         }
     }
-
 
     private void showAddNetworkPrinterDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
@@ -192,10 +205,7 @@ public class PrinterActivity extends BaseActivity {
             if (ACTION_USB_PERMISSION.equals(intent.getAction())) {
                 UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
                 if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-                    if (device != null) {
-                        // Κάλεσε τη βελτιωμένη μέθοδο που διαβάζει το αποθηκευμένο target
-                        ensureUsbPrintersInList();
-                    }
+                    if (device != null) ensureUsbPrintersInList();
                 } else {
                     Toast.makeText(context, "Άδεια USB απορρίφθηκε", Toast.LENGTH_SHORT).show();
                 }
@@ -207,7 +217,7 @@ public class PrinterActivity extends BaseActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(intent.getAction())) {
-            ensureUsbPrintersInList();   // αντί για scanAndAddUsbPrinters()
+            ensureUsbPrintersInList();
         }
     }
 
@@ -217,7 +227,6 @@ public class PrinterActivity extends BaseActivity {
         List<PrinterManager.UsbPrinterProfile> profiles = printerManager.getPendingUsbProfiles();
 
         for (UsbDevice dev : devices) {
-            // Ψάξε αν υπάρχει αποθηκευμένο profile για αυτή τη συσκευή
             PrinterManager.UsbPrinterProfile matchedProfile = null;
             for (PrinterManager.UsbPrinterProfile profile : profiles) {
                 if (profile.vid == dev.getVendorId() && profile.pid == dev.getProductId()) {
@@ -226,7 +235,6 @@ public class PrinterActivity extends BaseActivity {
                 }
             }
 
-            // Έλεγξε αν υπάρχει ήδη στη λίστα του PrinterManager (για να μην διπλοπροσθέσουμε)
             boolean alreadyExists = false;
             for (PrinterDevice p : printerManager.getPrinters()) {
                 if (p instanceof UsbPrinter) {
@@ -241,43 +249,35 @@ public class PrinterActivity extends BaseActivity {
             if (!alreadyExists) {
                 String name;
                 String target;
+                boolean imageMode = false;
                 if (matchedProfile != null) {
                     name = matchedProfile.name;
                     target = matchedProfile.target;
-                    // Αφαίρεσε το profile για να μην ξαναπροστεθεί την επόμενη φορά
-                    // (στην πράξη μπορεί να μείνει, αλλά είναι εντάξει)
-                    // printerManager.clearPendingUsbProfile(matchedProfile);
+                    imageMode = matchedProfile.imageMode;
                 } else {
                     name = (dev.getProductName() != null) ? dev.getProductName() : "USB " + dev.getDeviceName();
-                    target = "RECEIPT";  // προεπιλογή αν δεν υπάρχει αποθηκευμένο
+                    target = "RECEIPT";
                 }
-                addUsbPrinterWithNameAndTarget(dev, name, target);
+                addUsbPrinterWithNameAndTarget(dev, name, target, imageMode);
             }
         }
     }
 
-    private void addUsbPrinterWithNameAndTarget(UsbDevice device, String name, String target) {
-        Log.d("USB_ADD", "Προσπάθεια προσθήκης USB: " + name + " target=" + target);
+    private void addUsbPrinterWithNameAndTarget(UsbDevice device, String name, String target, boolean imageMode) {
         if (!usbPrinterManager.hasPermission(device)) {
-            Log.d("USB_ADD", "ΔΕΝ έχει άδεια USB για " + name);
             runOnUiThread(() -> Toast.makeText(this, "Δεν υπάρχει άδεια για τον USB εκτυπωτή", Toast.LENGTH_SHORT).show());
             return;
         }
-
         boolean opened = usbPrinterManager.openPrinter(device);
-        Log.d("USB_ADD", "Αποτέλεσμα openPrinter = " + opened);
         if (!opened) {
             runOnUiThread(() -> Toast.makeText(this, "Αποτυχία ανοίγματος του USB εκτυπωτή", Toast.LENGTH_SHORT).show());
             return;
         }
-
         UsbPrinter usbPrinter = new UsbPrinter(usbPrinterManager, device, name, target);
+        usbPrinter.setImageMode(imageMode);
         printerManager.addPrinter(usbPrinter);
         printerManager.savePrintersConfig();
-        Log.d("USB_ADD", "Ο USB εκτυπωτής προστέθηκε επιτυχώς!");
-        if (printerAdapter != null) {
-            printerAdapter.notifyDataSetChanged();
-        }
+        if (printerAdapter != null) printerAdapter.notifyDataSetChanged();
         runOnUiThread(() -> Toast.makeText(this, "✅ USB εκτυπωτής '" + name + "' προστέθηκε", Toast.LENGTH_SHORT).show());
     }
 
@@ -285,19 +285,24 @@ public class PrinterActivity extends BaseActivity {
     protected void onResume() {
         super.onResume();
         ensureUsbPrintersInList();
-
-        IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(usbReceiver, filter);
+        if (!usbReceiverRegistered) {
+            IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(usbReceiver, filter);
+            }
+            usbReceiverRegistered = true;
         }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        unregisterReceiver(usbReceiver);
+        if (usbReceiverRegistered) {
+            unregisterReceiver(usbReceiver);
+            usbReceiverRegistered = false;
+        }
     }
 
     private void startFirebaseListener() {
@@ -322,9 +327,7 @@ public class PrinterActivity extends BaseActivity {
             public void onChildAdded(@NonNull DataSnapshot snapshot, String previousChildName) {
                 String receiptId = snapshot.getKey();
                 Map<String, Object> receiptData = (Map<String, Object>) snapshot.getValue();
-                if (receiptData != null) {
-                    printReceipt(receiptId, receiptData);
-                }
+                if (receiptData != null) printReceipt(receiptId, receiptData);
             }
             @Override public void onChildChanged(DataSnapshot snapshot, String previousChildName) {}
             @Override public void onChildRemoved(DataSnapshot snapshot) {}
@@ -380,48 +383,128 @@ public class PrinterActivity extends BaseActivity {
     }
 
     private void printReceipt(String receiptId, Map<String, Object> receiptData) {
-        // Αν το receiptData έχει πεδίο "target", το χρησιμοποιούμε
         String target = (String) receiptData.get("target");
         if (target == null) target = "RECEIPT";
 
         List<PrinterDevice> printers = printerManager.getPrintersByTarget(target);
-        if (printers.isEmpty()) {
-            // fallback σε RECEIPT
-            printers = printerManager.getPrintersByTarget("RECEIPT");
-        }
+        if (printers.isEmpty()) printers = printerManager.getPrintersByTarget("RECEIPT");
 
+        String fullText = buildFullReceiptText(receiptData);
         String text = buildReceiptText(receiptData);
+
+        String mark = (String) receiptData.get("epsilon_mark");
+        String uid = (String) receiptData.get("epsilon_uid");
+        String auth = (String) receiptData.get("epsilon_auth");
+        String qrUrl = (String) receiptData.get("epsilon_qr");
+
         for (PrinterDevice printer : printers) {
-            if (printer.isAvailable()) {
-                printExecutor.execute(() -> {
+            if (!printer.isAvailable()) continue;
+            printExecutor.execute(() -> {
+                if (printer.isImageMode()) {
+                    Bitmap bitmap = BitmapPrinterHelper.textToBitmap(fullText, 576, 24);
+                    if (printer instanceof BuiltinPrinter) {
+                        ((BuiltinPrinter) printer).printBitmap(bitmap);
+                    } else if (printer instanceof NetworkPrinter) {
+                        ((NetworkPrinter) printer).printBitmap(bitmap);
+                    } else if (printer instanceof UsbPrinter) {
+                        ((UsbPrinter) printer).printBitmap(bitmap);
+                    }
+                } else {
                     printer.print(text);
-                    printer.cutPaper();
-                });
-            }
+                    if (mark != null && !mark.isEmpty()) {
+                        printer.print("\n--------------------------------\n");
+                        printer.print("ΠΑΡΟΧΟΣ: EPSILON DIGITAL\n");
+                        printer.print("MARK: " + mark + "\n");
+                        printer.print("UID: " + uid + "\n");
+                        printer.print("ΚΩΔ. ΑΥΘΕΝΤΙΚΟΠΟΙΗΣΗΣ (ΥΠΑΕΣ):\n" + auth + "\n");
+                    }
+                    if (qrUrl != null && !qrUrl.isEmpty()) {
+                        if (printer instanceof BuiltinPrinter) {
+                            Printer zcsPrinter = ((BuiltinPrinter) printer).getPrinter();
+                            if (zcsPrinter != null) {
+                                zcsPrinter.setPrintAppendQRCode(qrUrl, 200, 200, Layout.Alignment.ALIGN_CENTER);
+                                zcsPrinter.setPrintStart();
+                            }
+                        } else {
+                            printer.print("QR URL:\n" + qrUrl + "\n");
+                        }
+                    }
+                }
+                printer.print("\n\n\n");
+                printer.cutPaper();
+            });
         }
-        // Διαγραφή του receipt μετά την εκτύπωση
         receiptsRef.child(receiptId).removeValue();
     }
 
-    // Βοηθητική μέθοδος για δημιουργία κειμένου από receiptData
+    private String buildFullReceiptText(Map<String, Object> receiptData) {
+        StringBuilder sb = new StringBuilder(buildReceiptText(receiptData));
+        String mark = (String) receiptData.get("epsilon_mark");
+        String uid = (String) receiptData.get("epsilon_uid");
+        String auth = (String) receiptData.get("epsilon_auth");
+        String qrUrl = (String) receiptData.get("epsilon_qr");
+        if (mark != null && !mark.isEmpty()) {
+            sb.append("\n--------------------------------\n");
+            sb.append("ΠΑΡΟΧΟΣ: EPSILON DIGITAL\n");
+            sb.append("MARK: ").append(mark).append("\n");
+            sb.append("UID: ").append(uid).append("\n");
+            sb.append("ΚΩΔ. ΑΥΘΕΝΤΙΚΟΠΟΙΗΣΗΣ (ΥΠΑΕΣ):\n").append(auth).append("\n");
+        }
+        if (qrUrl != null && !qrUrl.isEmpty()) {
+            sb.append("QR URL:\n").append(qrUrl).append("\n");
+        }
+        return sb.toString();
+    }
+
     private String buildReceiptText(Map<String, Object> receiptData) {
         StringBuilder sb = new StringBuilder();
-        sb.append("ΠΑΡΑΓΓΕΛΙΑ\n----------------\n");
+        String type = (String) receiptData.get("type");
+        boolean isOrderSlip86 = "order_slip_86".equals(type);
+
+        if (isOrderSlip86) sb.append("ΔΕΛΤΙΟ ΠΑΡΑΓΓΕΛΙΑΣ 8.6\n");
+        else sb.append("ΑΠΟΔΕΙΞΗ ΛΙΑΝΙΚΗΣ (11.2)\n");
+        sb.append("----------------\n");
         sb.append("Τραπέζι: ").append(receiptData.get("tableNumber")).append("\n");
-        sb.append("Ώρα: ").append(android.text.format.DateFormat.format("dd/MM/yyyy HH:mm:ss",
-                (long) receiptData.get("timestamp"))).append("\n");
+
+        String timeStr;
+        if (isOrderSlip86 && receiptData.containsKey("fiscal_time")) {
+            timeStr = (String) receiptData.get("fiscal_time");
+        } else {
+            long timestamp = 0;
+            Object tsObj = receiptData.get("timestamp");
+            if (tsObj instanceof Long) timestamp = (Long) tsObj;
+            else if (tsObj instanceof Integer) timestamp = ((Integer) tsObj).longValue();
+            else if (tsObj instanceof String) { try { timestamp = Long.parseLong((String) tsObj); } catch (NumberFormatException ignored) {} }
+            if (timestamp == 0) timestamp = System.currentTimeMillis();
+            timeStr = android.text.format.DateFormat.format("HH:mm:ss", timestamp).toString();
+        }
+        sb.append("Ώρα: ").append(timeStr).append("\n");
         sb.append("----------------\nΠροϊόντα:\n");
 
         Object itemsObj = receiptData.get("items");
         if (itemsObj instanceof List) {
             for (Map<String, Object> item : (List<Map<String, Object>>) itemsObj) {
-                sb.append("- ").append(item.get("name")).append(" x").append(item.get("quantity"));
+                String name = (String) item.get("name");
+                int qty = ((Number) item.get("quantity")).intValue();
+                double price = ((Number) item.get("price")).doubleValue();
+                double vatPercent = item.containsKey("vatPercent") ? ((Number) item.get("vatPercent")).doubleValue() : 13.0;
+                double lineTotal = price * qty;
+                sb.append(String.format("%s x%d  %.2f€ (ΦΠΑ %.0f%%)\n", name, qty, lineTotal, vatPercent));
                 String comment = (String) item.get("comment");
-                if (comment != null && !comment.isEmpty()) sb.append(" (").append(comment).append(")");
-                sb.append("\n");
+                if (comment != null && !comment.isEmpty()) sb.append("   Σχόλιο: ").append(comment).append("\n");
             }
         }
-        sb.append("----------------\n\n\n");
+
+        if (receiptData.containsKey("totalAmount")) {
+            double total = 0.0;
+            Object amountObj = receiptData.get("totalAmount");
+            if (amountObj instanceof Double) total = (Double) amountObj;
+            else if (amountObj instanceof Long) total = ((Long) amountObj).doubleValue();
+            else if (amountObj instanceof Integer) total = ((Integer) amountObj).doubleValue();
+            else if (amountObj instanceof String) { try { total = Double.parseDouble((String) amountObj); } catch (NumberFormatException ignored) {} }
+            sb.append("----------------\nΣΥΝΟΛΟ: €").append(String.format("%.2f", total)).append("\n");
+        }
+        sb.append("----------------\n");
         return sb.toString();
     }
 
@@ -435,5 +518,4 @@ public class PrinterActivity extends BaseActivity {
         if (usbPrinterManager != null) usbPrinterManager.close();
         mSys.sysPowerOff();
     }
-
 }

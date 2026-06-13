@@ -13,7 +13,6 @@ import com.google.gson.JsonObject;
 import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -49,6 +48,8 @@ public class EpsilonIntegrationHelper {
         String jwt = prefs.getString("jwt", "");
         String baseUrl = prefs.getString("baseUrl", "https://beta-epsilondigital.epsilonnet.gr/");
         String url = baseUrl + "api/send";
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.getDefault());
+        String issueDateTime = sdf.format(new Date());
 
         JsonObject source = buildOrderSlipSource(tableNumber, items, isAlreadyOpen);
 
@@ -503,8 +504,8 @@ public class EpsilonIntegrationHelper {
         JsonObject headerObj = new JsonObject();
         headerObj.addProperty("series", "A");
         headerObj.addProperty("aa", String.valueOf(System.currentTimeMillis() % 100000));
-        String todayDate = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
-        headerObj.addProperty("issueDate", todayDate);
+        String issueDateTime = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(new Date());
+        headerObj.addProperty("issueDate", issueDateTime);
         headerObj.addProperty("invoiceType", "8.6");
         headerObj.addProperty("currency", "EUR");
 
@@ -583,8 +584,8 @@ public class EpsilonIntegrationHelper {
         JsonObject headerObj = new JsonObject();
         headerObj.addProperty("series", "A");
         headerObj.addProperty("aa", String.valueOf(System.currentTimeMillis() % 100000));
-        String todayDate = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
-        headerObj.addProperty("issueDate", todayDate);
+        String issueDateTime = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(new Date());
+        headerObj.addProperty("issueDate", issueDateTime);
         headerObj.addProperty("invoiceType", "11.2");
         headerObj.addProperty("currency", "EUR");
         headerObj.addProperty("pointOfService", "Τραπέζι " + tableNumber);
@@ -844,8 +845,8 @@ public class EpsilonIntegrationHelper {
         JsonObject headerObj = new JsonObject();
         headerObj.addProperty("series", "A");
         headerObj.addProperty("aa", String.valueOf(System.currentTimeMillis() % 100000));
-        String todayDate = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
-        headerObj.addProperty("issueDate", todayDate);
+        String issueDateTime = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault()).format(new Date());
+        headerObj.addProperty("issueDate", issueDateTime);
         headerObj.addProperty("invoiceType", "8.6");
         headerObj.addProperty("currency", "EUR");
 

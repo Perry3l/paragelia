@@ -1,6 +1,7 @@
 package com.ads.paragelia;
 
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.text.Layout;
@@ -137,9 +138,31 @@ public class DeliveryOrdersActivity extends BaseActivity {
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 orderList.clear();
                 for (DataSnapshot orderSnap : snapshot.getChildren()) {
-                    String orderId = orderSnap.getKey();
-                    DataSnapshot currentOrderSnap = orderSnap.child("current_order");
-                    Map<String, Object> currentOrder = (Map<String, Object>) currentOrderSnap.getValue();
+                    String orderId = orderSnap.getKey();  // π.χ. "DL-4"
+
+                    // Ψάχνουμε για το πρώτο child που έχει "items"
+                    DataSnapshot orderDataSnap = null;
+                    if (orderSnap.hasChild("current_order")) {
+                        orderDataSnap = orderSnap.child("current_order");
+                    } else if (orderSnap.hasChild("items")) {
+                        orderDataSnap = orderSnap;
+                    } else {
+                        // Υπάρχει τυχαίο κλειδί; σαρώνουμε όλα τα children
+                        for (DataSnapshot child : orderSnap.getChildren()) {
+                            if (child.hasChild("items")) {
+                                orderDataSnap = child;
+                                break;
+                            } else if (child.hasChild("current_order")) {
+                                // Προσθήκη για να διαβάζει και τα παλιά "λάθος" δεδομένα
+                                orderDataSnap = child.child("current_order");
+                                break;
+                            }
+                        }
+                    }
+
+                    if (orderDataSnap == null) continue;
+
+                    Map<String, Object> currentOrder = (Map<String, Object>) orderDataSnap.getValue();
                     if (currentOrder == null) continue;
 
                     DeliveryOrder order = new DeliveryOrder();
@@ -149,10 +172,14 @@ public class DeliveryOrdersActivity extends BaseActivity {
                     Object ts = currentOrder.get("timestamp");
                     order.timestamp = ts instanceof Number ? ((Number) ts).longValue() : 0L;
                     order.items = (List<Map<String, Object>>) currentOrder.get("items");
-                    DataSnapshot customerSnap = currentOrderSnap.child("customer");
-                    if (customerSnap.exists()) {
-                        order.customer = (Map<String, Object>) customerSnap.getValue();
+
+                    // Προσπάθησε να βρεις customer αν υπάρχει
+                    if (currentOrder.containsKey("customer")) {
+                        order.customer = (Map<String, Object>) currentOrder.get("customer");
+                    } else if (orderDataSnap.hasChild("customer")) {
+                        order.customer = (Map<String, Object>) orderDataSnap.child("customer").getValue();
                     }
+
                     orderList.add(order);
                 }
                 if (adapter == null) {
@@ -164,7 +191,9 @@ public class DeliveryOrdersActivity extends BaseActivity {
             }
 
             @Override
-            public void onCancelled(@NonNull DatabaseError error) { }
+            public void onCancelled(@NonNull DatabaseError error) {
+                Toast.makeText(DeliveryOrdersActivity.this, "Σφάλμα φόρτωσης", Toast.LENGTH_SHORT).show();
+            }
         });
     }
 
@@ -356,7 +385,6 @@ public class DeliveryOrdersActivity extends BaseActivity {
 
     private void printReceiptOnly(String orderNumber, List<Map<String, Object>> items,
                                   String mark, String uid, String authCode, String qrUrl) {
-        // Εκτύπωση μόνο του πρώτου χαρτιού (είδη + στοιχεία παρόχου)
         printExecutor.execute(() -> {
             int printStatus = mPrinter.getPrinterStatus();
             if (printStatus == SdkResult.SDK_PRN_STATUS_PAPEROUT) {
@@ -370,60 +398,63 @@ public class DeliveryOrdersActivity extends BaseActivity {
             format.setFont(PrnTextFont.MONOSPACE);
 
             format.setAli(Layout.Alignment.ALIGN_CENTER);
-            mPrinter.setPrintAppendString("DELIVERY", format);
+            mPrinter.setPrintAppendString("ΑΠΟΔΕΙΞΗ ΠΑΡΑΛΑΒΗΣ", format);
             mPrinter.setPrintAppendString("----------------", format);
 
             format.setAli(Layout.Alignment.ALIGN_NORMAL);
-            mPrinter.setPrintAppendString("Αριθμός: " + orderNumber, format);
+            mPrinter.setPrintAppendString("Αριθμός Παραγγελίας: " + orderNumber, format);
             mPrinter.setPrintAppendString("Ημερομηνία: " +
                     android.text.format.DateFormat.format("dd/MM/yyyy HH:mm:ss", System.currentTimeMillis()), format);
 
             format.setAli(Layout.Alignment.ALIGN_CENTER);
             mPrinter.setPrintAppendString("----------------", format);
-
             format.setAli(Layout.Alignment.ALIGN_NORMAL);
             mPrinter.setPrintAppendString("Προϊόντα:", format);
 
             if (items != null) {
                 for (Map<String, Object> item : items) {
                     String name = (String) item.get("name");
-                    Object qtyObj = item.get("quantity");
-                    int quantity = (qtyObj instanceof Number) ? ((Number) qtyObj).intValue() : 1;
+                    int quantity = ((Number) item.get("quantity")).intValue();
                     String comment = (String) item.get("comment");
                     String line = name + "  x" + quantity;
-                    if (comment != null && !comment.isEmpty()) {
-                        line += " (" + comment + ")";
-                    }
+                    if (comment != null && !comment.isEmpty()) line += " (" + comment + ")";
                     mPrinter.setPrintAppendString(line, format);
                 }
             }
 
+            // Fiscal details
             if (mark != null && !mark.equals("0")) {
                 format.setAli(Layout.Alignment.ALIGN_CENTER);
                 mPrinter.setPrintAppendString("----------------", format);
                 format.setAli(Layout.Alignment.ALIGN_NORMAL);
                 format.setTextSize(20);
                 mPrinter.setPrintAppendString("ΠΑΡΟΧΟΣ: EPSILON DIGITAL", format);
-                mPrinter.setPrintAppendString("ΜΑΡΚ: " + mark, format);
+                mPrinter.setPrintAppendString("MARK: " + mark, format);
                 mPrinter.setPrintAppendString("UID: " + uid, format);
-                mPrinter.setPrintAppendString("ΚΩΔ. ΑΥΘΕΝΤΙΚΟΠΟΙΗΣΗΣ:", format);
+                mPrinter.setPrintAppendString("ΚΩΔ. ΑΥΘΕΝΤΙΚΟΠΟΙΗΣΗΣ (ΥΠΑΕΣ):", format);
                 mPrinter.setPrintAppendString(authCode, format);
                 if (qrUrl != null && !qrUrl.isEmpty()) {
-                    mPrinter.setPrintAppendString("QR URL: " + qrUrl, format);
+                    mPrinter.setPrintAppendString("----------------", format);
+                    try {
+                        mPrinter.setPrintAppendQRCode(qrUrl, 200, 200, Layout.Alignment.ALIGN_CENTER);
+                    } catch (Exception e) {
+                        mPrinter.setPrintAppendString("QR URL: " + qrUrl, format);
+                    }
                 }
                 format.setTextSize(25);
             }
 
             format.setAli(Layout.Alignment.ALIGN_CENTER);
             mPrinter.setPrintAppendString("----------------", format);
+            mPrinter.setPrintAppendString("Σας ευχαριστούμε!", format);
             mPrinter.setPrintAppendString("\n\n\n", format);
 
             int ret = mPrinter.setPrintStart();
-            if (ret != SdkResult.SDK_OK) {
-                runOnUiThread(() -> Toast.makeText(DeliveryOrdersActivity.this, "Σφάλμα εκτύπωσης απόδειξης: " + ret, Toast.LENGTH_LONG).show());
-            } else if (mPrinter.isSuppoerCutter()) {
-                mPrinter.openPrnCutter((byte) 1);
-            }
+            runOnUiThread(() -> {
+                if (ret == SdkResult.SDK_OK) Toast.makeText(DeliveryOrdersActivity.this, "Εκτύπωση ολοκληρώθηκε", Toast.LENGTH_SHORT).show();
+                else Toast.makeText(DeliveryOrdersActivity.this, "Σφάλμα εκτύπωσης: " + ret, Toast.LENGTH_LONG).show();
+            });
+            if (mPrinter.isSuppoerCutter()) mPrinter.openPrnCutter((byte) 1);
         });
     }
 
@@ -664,6 +695,20 @@ public class DeliveryOrdersActivity extends BaseActivity {
             } else {
                 holder.tvCustomerInfo.setText("Χωρίς στοιχεία πελάτη");
             }
+
+            // === ΝΕΟ: Click listener για επεξεργασία ===
+            holder.itemView.setOnClickListener(v -> {
+                Intent intent = new Intent(DeliveryOrdersActivity.this, DeliveryOrderEditActivity.class);
+                intent.putExtra(DeliveryOrderEditActivity.EXTRA_ORDER_ID, order.id);
+                intent.putExtra(DeliveryOrderEditActivity.EXTRA_ORDER_NUMBER, order.orderNumber);
+                if (order.customer != null) {
+                    intent.putExtra(DeliveryOrderEditActivity.EXTRA_CUSTOMER_NAME, (String) order.customer.get("name"));
+                    intent.putExtra(DeliveryOrderEditActivity.EXTRA_CUSTOMER_PHONE, (String) order.customer.get("phone"));
+                    intent.putExtra(DeliveryOrderEditActivity.EXTRA_CUSTOMER_ADDRESS, (String) order.customer.get("address"));
+                    intent.putExtra(DeliveryOrderEditActivity.EXTRA_CUSTOMER_NOTES, (String) order.customer.get("notes"));
+                }
+                startActivity(intent);
+            });
 
             holder.btnPrint.setOnClickListener(v -> showPaymentMethodDialog(order));
             holder.btnCancel.setOnClickListener(v -> cancelOrder(order));

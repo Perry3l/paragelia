@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.text.InputType;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.SwitchCompat;
@@ -29,11 +30,15 @@ public class SettingsActivity extends BaseActivity {
     private SwitchCompat switchTakeAway;
     private SharedPreferences prefsa;
     public static final String KEY_TAKEAWAY_ENABLED = "takeaway_enabled";
+    public static final String KEY_DELIVERY_ENABLED = "delivery_enabled";
 
     // Order-Only Mode constants
     public static final String PREFS_ORDER_MODE = "order_mode_prefs";
     public static final String KEY_ORDER_ONLY_MODE = "order_only_mode";
     private static final String ORDER_ONLY_CODE = "1234";
+
+    // ----- ΝΕΟ: κωδικός πρόσβασης για αλλαγή store code -----
+    private static final String MASTER_PASSWORD = "admin123"; // Μπορείτε να το αλλάξετε
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -89,6 +94,14 @@ public class SettingsActivity extends BaseActivity {
             Toast.makeText(this, isChecked ? "Το Take Away ενεργοποιήθηκε" : "Το Take Away απενεργοποιήθηκε", Toast.LENGTH_SHORT).show();
         });
 
+        SwitchCompat switchDelivery = findViewById(R.id.switchDelivery);
+        boolean deliveryEnabled = prefsa.getBoolean(KEY_DELIVERY_ENABLED, true);
+        switchDelivery.setChecked(deliveryEnabled);
+        switchDelivery.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            prefsa.edit().putBoolean(KEY_DELIVERY_ENABLED, isChecked).apply();
+            Toast.makeText(this, isChecked ? "Το Delivery ενεργοποιήθηκε" : "Το Delivery απενεργοποιήθηκε", Toast.LENGTH_SHORT).show();
+        });
+
         Button btnResolveAll = findViewById(R.id.btnResolveAllMerges);
         btnResolveAll.setOnClickListener(v -> {
             new AlertDialog.Builder(this)
@@ -131,8 +144,65 @@ public class SettingsActivity extends BaseActivity {
             builder.setNegativeButton("Ακύρωση", null);
             builder.show();
         });
+
+        // ----- NEW: Αλλαγή κωδικού καταστήματος -----
+        Button btnChangeStoreCode = findViewById(R.id.btnChangeStoreCode);
+        btnChangeStoreCode.setOnClickListener(v -> showChangeStoreCodeDialog());
     }
 
+    // ---------- Μέθοδος για αλλαγή κωδικού καταστήματος ----------
+    private void showChangeStoreCodeDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Αλλαγή κωδικού καταστήματος");
+
+        // Δημιουργία layout με δύο πεδία
+        final EditText inputPassword = new EditText(this);
+        inputPassword.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        inputPassword.setHint("Κωδικός πρόσβασης");
+
+        final EditText inputNewCode = new EditText(this);
+        inputNewCode.setInputType(InputType.TYPE_CLASS_TEXT);
+        inputNewCode.setHint("Νέος κωδικός καταστήματος");
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(50, 20, 50, 20);
+        layout.addView(inputPassword);
+        layout.addView(inputNewCode);
+
+        builder.setView(layout);
+
+        builder.setPositiveButton("Αλλαγή", (dialog, which) -> {
+            String password = inputPassword.getText().toString().trim();
+            String newCode = inputNewCode.getText().toString().trim();
+
+            if (!MASTER_PASSWORD.equals(password)) {
+                Toast.makeText(this, "Λάθος κωδικός πρόσβασης", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            if (newCode.isEmpty()) {
+                Toast.makeText(this, "Ο νέος κωδικός δεν μπορεί να είναι κενός", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // Αποθήκευση νέου κωδικού
+            StoreConfig.saveStoreCode(this, newCode);
+            FirebaseHelper.init(newCode);
+
+            // Καθαρισμός cache μενού
+            MenuCache.clear(this);
+
+            Toast.makeText(this, "Ο κωδικός καταστήματος άλλαξε. Η εφαρμογή θα επανεκκινηθεί.", Toast.LENGTH_LONG).show();
+
+            // Επανεκκίνηση
+            restartApp();
+        });
+
+        builder.setNegativeButton("Ακύρωση", null);
+        builder.show();
+    }
+
+    // ---------- Οι υπόλοιπες μέθοδοι παραμένουν ίδιες ----------
     private void resolveAllMerges() {
         DatabaseReference billsRef = FirebaseHelper.getReference("active_bills");
         billsRef.addListenerForSingleValueEvent(new ValueEventListener() {

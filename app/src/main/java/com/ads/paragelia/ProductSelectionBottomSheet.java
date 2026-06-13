@@ -37,6 +37,10 @@ import java.util.*;
 import android.content.Context;
 import android.view.MotionEvent;
 import android.view.inputmethod.InputMethodManager;
+import com.google.android.material.bottomsheet.BottomSheetBehavior;
+import com.google.android.material.bottomsheet.BottomSheetDialog;
+import android.widget.FrameLayout;
+import android.annotation.SuppressLint;
 
 public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
 
@@ -91,6 +95,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         rvSelectedItems = view.findViewById(R.id.rvSelectedItems);
         btnSubmitOnly = view.findViewById(R.id.btnSubmitOnly);
         btnSubmitAndPrint = view.findViewById(R.id.btnSubmitAndPrint);
+
         // In order-only mode, show only one button (hide the print button)
         if (isOrderOnlyMode()) {
             btnSubmitAndPrint.setVisibility(View.GONE);
@@ -100,6 +105,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                     ViewGroup.LayoutParams.WRAP_CONTENT
             ));
         }
+
         etSearch = view.findViewById(R.id.etSearch);
 
         etSearch.addTextChangedListener(new TextWatcher() {
@@ -125,6 +131,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                 submitOrder(true);
             }
         });
+
         rvProducts.setLayoutManager(new LinearLayoutManager(getContext()));
         rvSelectedItems.setLayoutManager(new LinearLayoutManager(getContext(), LinearLayoutManager.HORIZONTAL, false));
 
@@ -137,6 +144,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             showOrderPreview();
             return true;
         });
+
         // Πρώτα δημιουργούμε τον adapter
         selectedAdapter = new SelectedItemsAdapter(selectedItems, new SelectedItemsAdapter.OnItemActionListener() {
             @Override
@@ -160,13 +168,15 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                 updateButtonsState();
                 updateFirebaseOrder();
             }
-        });        rvSelectedItems.setAdapter(selectedAdapter);
+        });
+        rvSelectedItems.setAdapter(selectedAdapter);
 
         // Τώρα μπορούμε να φορτώσουμε τα υπάρχοντα δεδομένα
         loadExistingOrder();
 
         loadProductsWithCache();
         updateButtonsState();
+
         rvProducts.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_MOVE) {
                 hideKeyboard();
@@ -179,6 +189,18 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                 hideKeyboard();
             }
             return false;
+        });
+
+        // ========== ΝΕΟΣ ΚΩΔΙΚΑΣ: Αυτόματο άνοιγμα bottom sheet σε πλήρη οθόνη ==========
+        getDialog().setOnShowListener(dialog -> {
+            BottomSheetDialog bottomSheetDialog = (BottomSheetDialog) dialog;
+            FrameLayout bottomSheet = bottomSheetDialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
+            if (bottomSheet != null) {
+                BottomSheetBehavior behavior = BottomSheetBehavior.from(bottomSheet);
+                behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+                behavior.setPeekHeight(0);      // καμία προεξοχή
+                behavior.setSkipCollapsed(true); // να μην μαζεύεται ποτέ
+            }
         });
     }
     private void showOrderPreview() {
@@ -537,6 +559,20 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         updateButtonsState();
     }
 
+    private List<Map<String, Object>> convertToMapList(List<OrderItem> items) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (OrderItem item : items) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("name", item.name);
+            map.put("quantity", item.quantity);
+            map.put("price", item.price);
+            map.put("comment", item.comment);
+            map.put("vatPercent", item.vatPercent);
+            list.add(map);
+        }
+        return list;
+    }
+
     private void submitOrder(boolean printReceipt) {
         if (isSubmitting) return;
         isSubmitting = true;
@@ -547,10 +583,124 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             return;
         }
 
-        // ---------- ORDER-ONLY MODE ----------
-        // --- ORDER-ONLY MODE: save to active_bills (orange status) + print ---
+        // ---------- ORDER-ONLY MODE (χωρίς διαβίβαση στην ΑΑΔΕ) ----------
         if (isOrderOnlyMode()) {
-            // 1. Save order to Firebase (same as normal but without Epsilon)
+            // 1. Εκτύπωση (όπως πριν)
+            Map<String, List<OrderItem>> itemsByTarget = new HashMap<>();
+            for (OrderItem item : selectedItems) {
+                String target = "RECEIPT";
+                if (item.category != null) {
+                    target = MenuRepository.getInstance().getCategoryPrinterTarget(item.category);
+                }
+                itemsByTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(item);
+            }
+            for (Map.Entry<String, List<OrderItem>> entry : itemsByTarget.entrySet()) {
+                String target = entry.getKey();
+                List<OrderItem> itemsForTarget = entry.getValue();
+                List<Map<String, Object>> itemsMap = new ArrayList<>();
+                for (OrderItem item : itemsForTarget) {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("name", item.name);
+                    map.put("quantity", item.quantity);
+                    map.put("price", item.price);
+                    map.put("comment", item.comment);
+                    map.put("vatPercent", item.vatPercent);
+                    itemsMap.add(map);
+                }
+                saveReceiptDirect(itemsMap, target);
+            }
+
+            // 2. Ενημέρωση Firebase – ΚΡΑΤΑΜΕ ΤΟ merged_from
+            DatabaseReference orderRef = getOrderRef();
+            orderRef.child("current_order").addListenerForSingleValueEvent(new ValueEventListener() {
+                @Override
+                public void onDataChange(@NonNull DataSnapshot snapshot) {
+                    // Υπάρχοντα δεδομένα (αν υπάρχουν)
+                    Map<String, Object> existingOrder = new HashMap<>();
+                    if (snapshot.exists()) {
+                        existingOrder = (Map<String, Object>) snapshot.getValue();
+                    }
+
+                    // Παίρνουμε τα υπάρχοντα items
+                    List<Map<String, Object>> existingItems = new ArrayList<>();
+                    if (existingOrder.containsKey("items") && existingOrder.get("items") instanceof List) {
+                        existingItems = (List<Map<String, Object>>) existingOrder.get("items");
+                    }
+
+                    // Συγχώνευση νέων items με παλιά
+                    List<Map<String, Object>> mergedItems = new ArrayList<>(existingItems);
+                    for (OrderItem newItem : selectedItems) {
+                        boolean found = false;
+                        for (Map<String, Object> existing : mergedItems) {
+                            String name = (String) existing.get("name");
+                            String comment = (String) existing.get("comment");
+                            double price = ((Number) existing.get("price")).doubleValue();
+                            if (name.equals(newItem.name) &&
+                                    (comment == null ? newItem.comment == null : comment.equals(newItem.comment)) &&
+                                    Math.abs(price - newItem.price) < 0.01) {
+                                int oldQty = ((Number) existing.get("quantity")).intValue();
+                                existing.put("quantity", oldQty + newItem.quantity);
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            Map<String, Object> map = new HashMap<>();
+                            map.put("name", newItem.name);
+                            map.put("quantity", newItem.quantity);
+                            map.put("price", newItem.price);
+                            map.put("comment", newItem.comment);
+                            map.put("vatPercent", newItem.vatPercent);
+                            mergedItems.add(map);
+                        }
+                    }
+
+                    // Δημιουργία του νέου order – ΚΡΑΤΑΜΕ ΟΛΑ ΤΑ ΠΑΛΙΑ ΠΕΔΙΑ
+                    Map<String, Object> orderUpdate = new HashMap<>();
+                    orderUpdate.put("items", mergedItems);
+                    orderUpdate.put("timestamp", System.currentTimeMillis());
+                    orderUpdate.put("status", "ordered");
+
+                    // Διατήρηση merged_from (το πιο σημαντικό)
+                    if (existingOrder.containsKey("merged_from")) {
+                        orderUpdate.put("merged_from", existingOrder.get("merged_from"));
+                    }
+                    if (existingOrder.containsKey("tableNumber")) {
+                        orderUpdate.put("tableNumber", existingOrder.get("tableNumber"));
+                    } else if (isTakeAway() || isDelivery()) {
+                        orderUpdate.put("orderNumber", tableNumber);
+                    } else {
+                        orderUpdate.put("tableNumber", Integer.parseInt(tableNumber));
+                    }
+                    // Προαιρετικά: διατήρηση άλλων πεδίων (π.χ. printerTarget)
+                    if (existingOrder.containsKey("printerTarget")) {
+                        orderUpdate.put("printerTarget", existingOrder.get("printerTarget"));
+                    }
+
+                    // Αποθήκευση
+                    orderRef.child("current_order").setValue(orderUpdate)
+                            .addOnSuccessListener(aVoid -> {
+                                Toast.makeText(getContext(), "Η παραγγελία ενημερώθηκε", Toast.LENGTH_LONG).show();
+                                dismiss();
+                            })
+                            .addOnFailureListener(e -> {
+                                Toast.makeText(getContext(), "Σφάλμα αποθήκευσης: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                                resetButtons();
+                            });
+                }
+
+                @Override
+                public void onCancelled(@NonNull DatabaseError error) {
+                    Toast.makeText(getContext(), "Σφάλμα ανάγνωσης: " + error.getMessage(), Toast.LENGTH_SHORT).show();
+                    resetButtons();
+                }
+            });
+            return;
+        }
+
+        // ---------- NORMAL MODE (fiscal receipts, payments) ----------
+
+        if (isTakeAway() || isDelivery()) {
             List<Map<String, Object>> itemsMap = new ArrayList<>();
             for (OrderItem item : selectedItems) {
                 Map<String, Object> map = new HashMap<>();
@@ -562,55 +712,53 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                 itemsMap.add(map);
             }
 
-            DatabaseReference orderRef = getOrderRef();
-            String orderId = orderRef.push().getKey();
-            Map<String, Object> orderUpdate = new HashMap<>();
-            orderUpdate.put("items", itemsMap);
-            orderUpdate.put("timestamp", System.currentTimeMillis());
-            orderUpdate.put("status", "ordered");  // orange colour
-            if (isTakeAway() || isDelivery()) {
-                orderUpdate.put("orderNumber", tableNumber);
-            } else {
-                orderUpdate.put("tableNumber", Integer.parseInt(tableNumber));
-            }
-            // No epsilon fields
+            DatabaseReference orderRef = getOrderRef(); // TA-xxx ή DL-xxx
 
-            orderRef.child(orderId != null ? orderId : "temp").setValue(orderUpdate)
+            // Δημιουργούμε το αντικείμενο που θα μπει μέσα στο current_order
+            Map<String, Object> orderData = new HashMap<>();
+            orderData.put("items", itemsMap);
+            orderData.put("timestamp", System.currentTimeMillis());
+            orderData.put("status", "ordered");
+            orderData.put("orderNumber", tableNumber);
+
+            // Αποθηκεύουμε απευθείας στο current_order, χωρίς το τυχαίο κλειδί (orderId)
+            orderRef.child("current_order").setValue(orderData)
                     .addOnSuccessListener(aVoid -> {
-                        // 2. Send to printer for each target (same as before)
+                        // Εκτύπωση μόνο για μη‑RECEIPT targets
                         Map<String, List<OrderItem>> itemsByTarget = new HashMap<>();
                         for (OrderItem item : selectedItems) {
                             String target = "RECEIPT";
                             if (item.category != null) {
                                 target = MenuRepository.getInstance().getCategoryPrinterTarget(item.category);
                             }
-                            itemsByTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(item);
+                            if (!target.equals("RECEIPT")) {
+                                itemsByTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(item);
+                            }
                         }
                         for (Map.Entry<String, List<OrderItem>> entry : itemsByTarget.entrySet()) {
-                            String target = entry.getKey();
-                            List<OrderItem> itemsForTarget = entry.getValue();
-                            List<Map<String, Object>> printItems = new ArrayList<>();
-                            for (OrderItem item : itemsForTarget) {
+                            List<Map<String, Object>> targetItems = new ArrayList<>();
+                            for (OrderItem item : entry.getValue()) {
                                 Map<String, Object> map = new HashMap<>();
                                 map.put("name", item.name);
                                 map.put("quantity", item.quantity);
                                 map.put("price", item.price);
                                 map.put("comment", item.comment);
                                 map.put("vatPercent", item.vatPercent);
-                                printItems.add(map);
+                                targetItems.add(map);
                             }
-                            saveReceiptDirect(printItems, target);
+                            saveReceiptDirect(targetItems, entry.getKey());
                         }
+                        Toast.makeText(getContext(), "Η παραγγελία καταχωρήθηκε", Toast.LENGTH_LONG).show();
                         dismiss();
                     })
                     .addOnFailureListener(e -> {
-                        resetButtons();
                         Toast.makeText(getContext(), "Σφάλμα αποθήκευσης: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        resetButtons();
                     });
             return;
         }
 
-        // ---------- NORMAL MODE (fiscal receipts, Epsilon, payments) ----------
+        // ---------- ΚΑΝΟΝΙΚΟ ΤΡΑΠΕΖΙ (υπάρχων κώδικας) ----------
         // 1. Group items by printer target
         Map<String, List<OrderItem>> itemsByTarget = new HashMap<>();
         for (OrderItem item : selectedItems) {
@@ -621,7 +769,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             itemsByTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(item);
         }
 
-        // 2. For each target, handle separately
+// 2. Για κάθε target, χειριζόμαστε ξεχωριστά
         for (Map.Entry<String, List<OrderItem>> entry : itemsByTarget.entrySet()) {
             String target = entry.getKey();
             List<OrderItem> itemsForTarget = entry.getValue();
@@ -637,37 +785,19 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                 itemsMap.add(map);
             }
 
-            // Only RECEIPT target goes through Epsilon (fiscal)
-            if (target.equals("RECEIPT") && !isTakeAway() && !isDelivery()) {
-                // Determine if table is already open in AADE
-                boolean isAlreadyOpen = isTableAlreadyOpen;
+            // ΠΛΕΟΝ ΔΕΝ ΣΤΕΛΝΟΥΜΕ ΑΥΤΟΜΑΤΑ ΣΤΟ EPSILON (ΑΑΔΕ) ΚΑΤΑ ΤΗΝ ΠΑΡΑΓΓΕΛΙΑ.
+            // Εκτυπώνουμε κανονικά σε Κουζίνα/Μπαρ/Ταμείο (ανάλογα το target)
+            saveReceiptDirect(itemsMap, target);
 
-                EpsilonIntegrationHelper.sendOrderSlip86(getContext(), tableNumber, itemsMap, isAlreadyOpen,
-                        new EpsilonIntegrationHelper.CallbackWithResult<SendResponse>() {
-                            @Override
-                            public void onSuccess(SendResponse response) {
-                                saveToFirebaseAndFinish(itemsMap, printReceipt, response, target);
-                            }
-
-                            @Override
-                            public void onError(String message) {
-                                Toast.makeText(getContext(), "Σφάλμα Epsilon: " + message, Toast.LENGTH_LONG).show();
-                                resetButtons();
-                            }
-                        });
-            } else {
-                // KITCHEN, BAR, TAKEAWAY, DELIVERY → print without Epsilon
-                saveReceiptDirect(itemsMap, target);
-            }
+            // Το epsilonResponse πάει ως null, άρα το status θα γίνει "ordered" και το τραπέζι ΠΟΡΤΟΚΑΛΙ!
+            saveToFirebaseAndFinish(itemsMap, printReceipt, null, target);
         }
 
-        // Dismiss after all targets are processed (only if no Epsilon call is pending)
-        // The Epsilon call will dismiss inside saveToFirebaseAndFinish.
-        if (!itemsByTarget.containsKey("RECEIPT") || isTakeAway() || isDelivery()) {
+        // Κλείνουμε το BottomSheet
+        if (!itemsByTarget.containsKey("RECEIPT")) {
             dismiss();
         }
     }
-
     private void saveReceiptDirect(List<Map<String, Object>> items, String target) {
         DatabaseReference receiptsRef = FirebaseHelper.getReference("receipts");
         String receiptId = receiptsRef.push().getKey();
@@ -676,7 +806,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         receiptData.put("items", items);
         receiptData.put("timestamp", System.currentTimeMillis());
         receiptData.put("type", "order");
-        receiptData.put("target", target);   // κρίσιμο για τον PrinterActivity
+        receiptData.put("target", target);
         if (receiptId != null) {
             receiptsRef.child(receiptId).setValue(receiptData);
         }
@@ -698,11 +828,13 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             long mark = epsilonResponse.getMark();
             String uid = epsilonResponse.getUid() != null ? epsilonResponse.getUid() : "";
             String qr = epsilonResponse.getQrCode() != null ? epsilonResponse.getQrCode() : "";
+            String auth = epsilonResponse.getAuthenticationCode() != null ? epsilonResponse.getAuthenticationCode() : ""; // <-- Προστέθηκε
 
             // 1. Αποθήκευση στοιχείων μέσα στη συγκεκριμένη παραγγελία
             orderUpdate.put("epsilon_86_mark", String.valueOf(mark));
             orderUpdate.put("epsilon_86_uid", uid);
             orderUpdate.put("epsilon_86_qr", qr);
+            orderUpdate.put("epsilon_86_auth", auth); // <-- Προστέθηκε
             if (epsilonResponse.getExternalSystemId() != null) {
                 orderUpdate.put("epsilon_86_extId", epsilonResponse.getExternalSystemId());
             }
@@ -712,6 +844,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             lastFiscal.put("mark", String.valueOf(mark));
             lastFiscal.put("uid", uid);
             lastFiscal.put("qr", qr);
+            lastFiscal.put("auth", auth); // <-- Προστέθηκε
             lastFiscal.put("fiscal_time", new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date()));
             orderRef.child("last_fiscal_info").setValue(lastFiscal);
 
@@ -720,6 +853,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             Map<String, Object> markData = new HashMap<>();
             markData.put("mark", mark);
             markData.put("uid", uid);
+            markData.put("auth", auth); // <-- Προστέθηκε
             markData.put("qrUrl", qr);
             markData.put("timestamp", System.currentTimeMillis());
             marksRef.setValue(markData);
@@ -820,17 +954,17 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         String name;
         double price;
         double vatPercent;
-        public String category;
+        public String category;   // <-- ΝΕΟ
         List<Ingredient> ingredients;
         List<Addon> addons;
-        List<Variant> variants;   // ΝΕΟ
+        List<Variant> variants;
 
         ProductItem(String n, double p) {
             this.name = n; this.price = p;
             this.vatPercent = 13;
             this.ingredients = new ArrayList<>();
             this.addons = new ArrayList<>();
-            this.variants = new ArrayList<>();   // ΝΕΟ
+            this.variants = new ArrayList<>();
         }
 
         ProductItem(String n, double p, List<Ingredient> ingredients, List<Addon> addons) {
@@ -838,7 +972,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             this.vatPercent = 13;
             this.ingredients = ingredients;
             this.addons = addons;
-            this.variants = new ArrayList<>();   // ΝΕΟ
+            this.variants = new ArrayList<>();
         }
 
         ProductItem(String n, double p, double vat, List<Ingredient> ings, List<Addon> adds) {
@@ -846,7 +980,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             this.vatPercent = vat;
             this.ingredients = ings;
             this.addons = adds;
-            this.variants = new ArrayList<>();   // ΝΕΟ
+            this.variants = new ArrayList<>();
         }
     }
 

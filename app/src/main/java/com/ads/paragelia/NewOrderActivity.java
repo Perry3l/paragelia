@@ -3,6 +3,7 @@ package com.ads.paragelia;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -27,6 +28,7 @@ import java.util.Map;
 
 public class NewOrderActivity extends BaseActivity {
 
+    private static final String TAG = "NewOrderActivity";
     private RecyclerView tableRecyclerView;
     private TableAdapter tableAdapter;
     private DatabaseReference activeBillsRef;
@@ -38,6 +40,13 @@ public class NewOrderActivity extends BaseActivity {
     private String sourceTable = null;
     private DatabaseReference billsRef;
     private boolean orderOnlyMode = false;
+    private SystemSettingsManager settingsManager;
+    private Runnable settingsListener;
+
+    private int getMaxTables() {
+        SharedPreferences prefs = getSharedPreferences("system_prefs", MODE_PRIVATE);
+        return prefs.getInt("max_tables", 10);
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,7 +54,16 @@ public class NewOrderActivity extends BaseActivity {
         setContentView(R.layout.activity_new_order);
         showMemoryOverlay();
 
-        // Read order-only mode
+        settingsManager = SystemSettingsManager.getInstance();
+        settingsListener = () -> {
+            tableList.clear();
+            for (int i = 1; i <= settingsManager.getMaxTables(); i++) {
+                tableList.add(new TableData(String.valueOf(i)));
+            }
+            tableAdapter.notifyDataSetChanged();
+        };
+        settingsManager.addListener(settingsListener);
+
         SharedPreferences orderPrefs = getSharedPreferences(SettingsActivity.PREFS_ORDER_MODE, MODE_PRIVATE);
         orderOnlyMode = orderPrefs.getBoolean(SettingsActivity.KEY_ORDER_ONLY_MODE, false);
 
@@ -57,88 +75,81 @@ public class NewOrderActivity extends BaseActivity {
         activeBillsRef = FirebaseHelper.getReference("active_bills");
         billsRef = activeBillsRef;
 
-        // Initialize tables 1-10
-        for (int i = 1; i <= 10; i++) {
+        // Αρχικοποίηση τραπεζιών 1-10
+        for (int i = 1; i <= settingsManager.getMaxTables(); i++) {
             tableList.add(new TableData(String.valueOf(i)));
         }
         tableAdapter.notifyDataSetChanged();
 
-        // Live update from Firebase
+        // Live listener
         activeBillsRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
-                for (int i = 1; i <= 10; i++) {
+                Log.d(TAG, "🔥 onDataChange: snapshot has " + snapshot.getChildrenCount() + " children");
+                for (int i = 1; i <= settingsManager.getMaxTables(); i++) {
                     String tableKey = String.valueOf(i);
                     TableData data = tableList.get(i - 1);
                     data.clearMerged();
                     data.setHasOrder(false);
                     data.setSummary("Καμία παραγγελία");
-                    data.setStatus("pending"); // default
+                    data.setStatus("pending");
+                    data.totalAmount = 0.0;
 
                     if (snapshot.hasChild(tableKey)) {
                         DataSnapshot tableSnap = snapshot.child(tableKey);
                         Map<String, Object> tableData = (Map<String, Object>) tableSnap.getValue();
+                        Log.d(TAG, "📋 Table " + tableKey + " data: " + tableData);
 
                         if (tableData != null && tableData.containsKey("merged_to")) {
-                            // This table is a source (merged into another)
                             String mergedTo = (String) tableData.get("merged_to");
                             data.setMerged(mergedTo);
                             continue;
                         }
 
-                        // Check for current_order (the main order node)
-                        if (tableData != null && tableData.containsKey("current_order")) {
-                            Map<String, Object> cur = (Map<String, Object>) tableData.get("current_order");
-                            if (cur != null) {
-                                if (cur.containsKey("merged_from")) {
-                                    data.setMergedFrom((String) cur.get("merged_from"));
-                                } else {
-                                    data.clearMerged();
-                                }
-                                // Read status from current_order
-                                if (cur.containsKey("status")) {
-                                    data.setStatus((String) cur.get("status"));
-                                }
-                                // Build summary from current_order items
-                                Object itemsObj = cur.get("items");
+                        // Σάρωση όλων των παιδιών για items
+                        boolean foundItems = false;
+                        double total = 0.0;
+                        StringBuilder itemsText = new StringBuilder();
+                        int itemCount = 0;
+
+                        for (DataSnapshot child : tableSnap.getChildren()) {
+                            Map<String, Object> order = (Map<String, Object>) child.getValue();
+                            if (order != null && order.containsKey("items")) {
+                                Object itemsObj = order.get("items");
                                 if (itemsObj instanceof List) {
                                     List<Map<String, Object>> items = (List<Map<String, Object>>) itemsObj;
-                                    data.setSummary(buildSummaryFromItems(items));
-                                    data.setHasOrder(true);
-                                } else {
-                                    data.setSummary("Καμία παραγγελία");
-                                }
-                            }
-                        } else {
-                            // No current_order, but there might be legacy orders (push keys)
-                            // Build summary from all children that contain "items"
-                            StringBuilder sb = new StringBuilder();
-                            int totalItems = 0;
-                            for (DataSnapshot child : tableSnap.getChildren()) {
-                                Map<String, Object> order = (Map<String, Object>) child.getValue();
-                                if (order != null && order.containsKey("items")) {
-                                    Object itemsObj = order.get("items");
-                                    if (itemsObj instanceof List) {
-                                        List<Map<String, Object>> items = (List<Map<String, Object>>) itemsObj;
-                                        for (Map<String, Object> item : items) {
-                                            if (totalItems >= 5) {
-                                                sb.append("...");
-                                                break;
-                                            }
-                                            String name = (String) item.get("name");
-                                            Object qtyObj = item.get("quantity");
-                                            int qty = (qtyObj instanceof Number) ? ((Number) qtyObj).intValue() : 1;
-                                            sb.append(name).append(" x").append(qty).append(", ");
-                                            totalItems++;
+                                    for (Map<String, Object> item : items) {
+                                        if (itemCount >= 5) {
+                                            itemsText.append("...");
+                                            break;
                                         }
+                                        String name = (String) item.get("name");
+                                        int qty = ((Number) item.get("quantity")).intValue();
+                                        double price = ((Number) item.get("price")).doubleValue();
+                                        total += price * qty;
+                                        itemsText.append(name).append(" x").append(qty).append(", ");
+                                        itemCount++;
+                                        foundItems = true;
                                     }
-                                    // If we find any order, set hasOrder true
-                                    data.setHasOrder(true);
                                 }
                             }
-                            if (sb.length() > 2) {
-                                sb.setLength(sb.length() - 2);
-                                data.setSummary(sb.toString());
+                        }
+
+                        if (foundItems) {
+                            if (itemsText.length() > 2) itemsText.setLength(itemsText.length() - 2);
+                            data.setSummary(itemsText.toString());
+                            data.setHasOrder(true);
+                            data.totalAmount = total;
+                        }
+
+                        // Διάβασε status αν υπάρχει current_order
+                        if (tableData != null && tableData.containsKey("current_order")) {
+                            Map<String, Object> cur = (Map<String, Object>) tableData.get("current_order");
+                            if (cur != null && cur.containsKey("status")) {
+                                data.setStatus((String) cur.get("status"));
+                            }
+                            if (cur != null && cur.containsKey("merged_from")) {
+                                data.setMergedFrom((String) cur.get("merged_from"));
                             }
                         }
                     }
@@ -147,7 +158,9 @@ public class NewOrderActivity extends BaseActivity {
             }
 
             @Override
-            public void onCancelled(@NonNull DatabaseError error) { }
+            public void onCancelled(@NonNull DatabaseError error) {
+                Log.e(TAG, "Σφάλμα ανάγνωσης: " + error.getMessage());
+            }
         });
 
         btnMergeTables = findViewById(R.id.btnMergeTables);
@@ -227,13 +240,18 @@ public class NewOrderActivity extends BaseActivity {
         public void onBindViewHolder(@NonNull TableViewHolder holder, int position) {
             TableData data = tableList.get(position);
 
-            // Merged source table (grayed out)
             if (data.isMerged()) {
                 holder.tvTableNumber.setText("Τραπέζι " + data.tableNumber + " 🔀");
                 holder.tvOrderSummary.setText("Συγχωνεύτηκε με " + data.mergedTo);
                 holder.cardView.setCardBackgroundColor(Color.LTGRAY);
                 holder.btnAddExtra.setVisibility(View.GONE);
-                holder.cardView.setOnClickListener(null);
+                // Αφαιρούμε το null click listener, ώστε να ανοίγει το τραπέζι‑προορισμός
+                holder.cardView.setOnClickListener(v -> {
+                    // Βρίσκουμε το τραπέζι προορισμού (mergedTo) και ανοίγουμε bottom sheet γι' αυτό
+                    String destTable = data.mergedTo;
+                    ProductSelectionBottomSheet bottomSheet = ProductSelectionBottomSheet.newInstance(destTable);
+                    bottomSheet.show(getSupportFragmentManager(), "product_sheet");
+                });
                 holder.cardView.setAlpha(1.0f);
                 return;
             }
@@ -518,7 +536,8 @@ public class NewOrderActivity extends BaseActivity {
         boolean merged = false;
         String mergedTo = "";
         String mergedFrom = null;
-        String status = "pending";   // new field
+        String status = "pending";
+        double totalAmount = 0.0;
 
         TableData(String tableNumber) {
             this.tableNumber = tableNumber;

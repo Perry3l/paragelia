@@ -1,5 +1,7 @@
 package com.ads.paragelia;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -23,6 +25,12 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
     private final AsyncListDiffer<TableCardData> differ =
             new AsyncListDiffer<>(this, DIFF_CALLBACK);
 
+    private boolean orderOnlyMode = false;
+
+    public void setOrderOnlyMode(boolean enabled) {
+        this.orderOnlyMode = enabled;
+    }
+
     // ---------- Διεπαφή ----------
     public interface OnTableInteractionListener {
         void onTableClicked(TableCardData data);
@@ -31,7 +39,7 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
         void onPartialClicked(TableCardData data);
         void onMoveClicked(TableCardData data);
         void onPrintTempClicked(TableCardData data);
-        void onTableLongClicked(TableCardData data);   // <-- προστέθηκε
+        void onTableLongClicked(TableCardData data);
     }
 
     private OnTableInteractionListener listener;
@@ -55,7 +63,7 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
     @Override
     public void onBindViewHolder(@NonNull TableViewHolder holder, int position) {
         TableCardData data = differ.getCurrentList().get(position);
-        holder.bind(data, listener);
+        holder.bind(data, listener, orderOnlyMode);
     }
 
     @Override
@@ -83,7 +91,7 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
         }
     }
 
-    // ---------- ViewHolder (χωρίς δικό του interface) ----------
+    // ---------- ViewHolder ----------
     static class TableViewHolder extends RecyclerView.ViewHolder {
         MaterialCardView cardView;
         TextView tvTableInfo;
@@ -96,7 +104,7 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
             buttonsContainer = itemView.findViewById(R.id.buttonsContainer);
         }
 
-        void bind(TableCardData data, OnTableInteractionListener listener) {
+        void bind(TableCardData data, OnTableInteractionListener listener, boolean orderOnlyMode) {
             String title;
             if (data.customTitle != null) {
                 title = data.customTitle;
@@ -130,7 +138,7 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
             buttonsContainer.removeAllViews();
             if (!data.isEmpty) {
                 if ("ordered".equals(data.status)) {
-                    addOrderedButtons(buttonsContainer, data, listener);
+                    addOrderedButtons(buttonsContainer, data, listener, orderOnlyMode);
                 } else {
                     addNormalButtons(buttonsContainer, data, listener);
                 }
@@ -139,7 +147,7 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
 
         private void addNormalButtons(LinearLayout parent, TableCardData data,
                                       OnTableInteractionListener listener) {
-            // ... (ίδιος κώδικας με πριν, δεν πειράζουμε)
+            // ... (ίδιος κώδικας με πριν, δεν τον αλλάζουμε)
             LinearLayout row1 = new LinearLayout(parent.getContext());
             row1.setOrientation(LinearLayout.HORIZONTAL);
 
@@ -195,20 +203,37 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
         }
 
         private void addOrderedButtons(LinearLayout parent, TableCardData data,
-                                       OnTableInteractionListener listener) {
-            Button btnPrintTemp = new Button(parent.getContext());
-            btnPrintTemp.setText("ΑΝΑΦΟΡΑ ΤΡΑΠΕΖΙΟΥ");
-            btnPrintTemp.setBackgroundColor(Color.parseColor("#2196F3"));
-            btnPrintTemp.setTextColor(Color.WHITE);
-            LinearLayout.LayoutParams btnPrintParams = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            btnPrintParams.setMargins(0, 0, 0, 0);
-            btnPrintTemp.setLayoutParams(btnPrintParams);
-            btnPrintTemp.setOnClickListener(v -> {
-                if (listener != null) listener.onPrintTempClicked(data);
-            });
-            parent.addView(btnPrintTemp);
+                                       OnTableInteractionListener listener, boolean orderOnlyMode) {
+            if (orderOnlyMode) {
+                // Στη λειτουργία μόνο παραγγελιών: εμφάνιση συνολικού ποσού αντί για κουμπί αναφοράς
+                double total = calculateTotalAmount(data.tableData);
+                Button btnTotal = new Button(parent.getContext());
+                btnTotal.setText(String.format("ΣΥΝΟΛΟ: €%.2f", total));
+                btnTotal.setBackgroundColor(Color.parseColor("#2196F3"));
+                btnTotal.setTextColor(Color.WHITE);
+                btnTotal.setEnabled(false); // δεν κάνει τίποτα
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                params.setMargins(0, 0, 0, 8);
+                btnTotal.setLayoutParams(params);
+                parent.addView(btnTotal);
+            } else {
+                // Κανονική λειτουργία: κουμπί εκτύπωσης αναφοράς
+                Button btnPrintTemp = new Button(parent.getContext());
+                btnPrintTemp.setText("ΑΝΑΦΟΡΑ ΤΡΑΠΕΖΙΟΥ");
+                btnPrintTemp.setBackgroundColor(Color.parseColor("#2196F3"));
+                btnPrintTemp.setTextColor(Color.WHITE);
+                LinearLayout.LayoutParams btnPrintParams = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                btnPrintParams.setMargins(0, 0, 0, 0);
+                btnPrintTemp.setLayoutParams(btnPrintParams);
+                btnPrintTemp.setOnClickListener(v -> {
+                    if (listener != null) listener.onPrintTempClicked(data);
+                });
+                parent.addView(btnPrintTemp);
+            }
 
+            // Τα υπόλοιπα κουμπιά (ΑΚΥΡΩΣΗ, ΜΕΤΑΚΙΝΗΣΗ) εμφανίζονται πάντα
             LinearLayout row = new LinearLayout(parent.getContext());
             row.setOrientation(LinearLayout.HORIZONTAL);
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
@@ -241,6 +266,48 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
             row.addView(btnCancel);
             row.addView(btnMove);
             parent.addView(row);
+        }
+
+        // Βοηθητική μέθοδος υπολογισμού συνολικού ποσού από τα tableData
+        private double calculateTotalAmount(Map<String, Object> tableData) {
+            double total = 0.0;
+            if (tableData == null) return total;
+
+            // 1. Από push-keys (παλιά δομή)
+            for (Map.Entry<String, Object> entry : tableData.entrySet()) {
+                if (entry.getKey().equals("last_fiscal_info") ||
+                        entry.getKey().equals("epsilon_marks") ||
+                        entry.getKey().equals("current_order")) continue;
+                if (!(entry.getValue() instanceof Map)) continue;
+                Map<String, Object> order = (Map<String, Object>) entry.getValue();
+                Object itemsObj = order.get("items");
+                if (itemsObj instanceof List) {
+                    List<Map<String, Object>> items = (List<Map<String, Object>>) itemsObj;
+                    for (Map<String, Object> item : items) {
+                        int qty = ((Number) item.get("quantity")).intValue();
+                        double price = ((Number) item.get("price")).doubleValue();
+                        total += qty * price;
+                    }
+                }
+            }
+
+            // 2. Από current_order (συγχωνεύσεις, order‑only mode)
+            if (tableData.containsKey("current_order")) {
+                Object curObj = tableData.get("current_order");
+                if (curObj instanceof Map) {
+                    Map<String, Object> cur = (Map<String, Object>) curObj;
+                    Object itemsObj = cur.get("items");
+                    if (itemsObj instanceof List) {
+                        List<Map<String, Object>> items = (List<Map<String, Object>>) itemsObj;
+                        for (Map<String, Object> item : items) {
+                            int qty = ((Number) item.get("quantity")).intValue();
+                            double price = ((Number) item.get("price")).doubleValue();
+                            total += qty * price;
+                        }
+                    }
+                }
+            }
+            return total;
         }
     }
 

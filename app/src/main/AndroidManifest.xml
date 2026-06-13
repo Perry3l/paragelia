@@ -12,11 +12,13 @@
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.NFC" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
-    <uses-feature android:name="android.hardware.usb.host" android:required="true" />
-
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="true" />
     <uses-feature
         android:name="android.hardware.bluetooth"
         android:required="true" />
@@ -34,6 +36,9 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Paragelia">
+        <activity
+            android:name=".PrinterManagementActivity"
+            android:exported="false" />
         <activity
             android:name=".DeliveryOrdersActivity"
             android:exported="false" />
@@ -67,6 +72,7 @@
         <activity
             android:name=".AddToTableActivity"
             android:exported="false" />
+        <activity android:name=".DeliveryOrderEditActivity" />
         <activity
             android:name=".ActiveTablesActivity"
             android:exported="false" />
@@ -78,6 +84,7 @@
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
             </intent-filter>
+
             <meta-data
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter" />
@@ -93,9 +100,11 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

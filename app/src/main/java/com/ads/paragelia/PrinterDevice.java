@@ -7,5 +7,7 @@ public interface PrinterDevice {
     boolean isAvailable();
     void print(String text);
     void cutPaper();
-    void setTarget(String target);  // ΝΕΑ ΜΕΘΟΔΟΣ
+    void setTarget(String target);
+    void setImageMode(boolean enabled);   // ΝΕΟ
+    boolean isImageMode();                // ΝΕΟ
 }

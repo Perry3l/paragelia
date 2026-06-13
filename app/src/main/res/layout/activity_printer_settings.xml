@@ -38,6 +38,13 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="Λειτουργία Take Away" />
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchDelivery"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Ενεργοποίηση Delivery"
+                    android:textSize="16sp"
+                    android:layout_marginTop="16dp" />
 
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
@@ -91,6 +98,13 @@
                     android:layout_height="wrap_content"
                     android:text="Προβολή χρήσης μνήμης (debug)" />
 
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/switchOrderOnlyMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Λειτουργία μόνο παραγγελιών"
+                    android:padding="16dp" />
+
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnResolveAllMerges"
                     style="@style/Widget.Material3.Button.TonalButton"
@@ -114,6 +128,33 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:text="Επανεκκίνηση εφαρμογής" />
+                <Button
+                    android:id="@+id/btnChangeStoreCode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Αλλαγή κωδικού καταστήματος"
+                    android:layout_marginTop="16dp"
+                    style="@style/Widget.Material3.Button.OutlinedButton" />
+                <Button
+                    android:id="@+id/btnChangeTableCount"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Αλλαγή αριθμού τραπεζιών"
+                    android:layout_marginTop="6dp"
+                    style="@style/Widget.Material3.Button.OutlinedButton" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnTestPrinters"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Δοκιμαστική εκτύπωση"
+                    android:layout_marginTop="8dp" />
+                <Button
+                    android:id="@+id/btnManagePrinters"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="🖨️ Διαχείριση Εκτυπωτών"
+                    android:layout_marginTop="8dp" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnShowApkQr"
