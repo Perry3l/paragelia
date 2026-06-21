@@ -848,53 +848,55 @@ public class ActiveTablesActivity extends BaseActivity {
 
     private void clearTableAndMergedSource(String tableNumber, Runnable onSuccess) {
         DatabaseReference tableRef = billsRef.child(tableNumber);
-        tableRef.addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                // 1. Ελέγχουμε αν το τραπέζι έχει merged_from (είναι προορισμός συγχώνευσης)
-                Map<String, Object> data = (Map<String, Object>) snapshot.getValue();
-                if (data != null && data.containsKey("current_order")) {
-                    Map<String, Object> cur = (Map<String, Object>) data.get("current_order");
-                    if (cur != null && cur.containsKey("merged_from")) {
-                        String mergedFrom = (String) cur.get("merged_from");
-                        billsRef.child(mergedFrom).removeValue(); // διαγραφή πηγής
-                    }
-                }
 
-                // 2. Ελέγχουμε αν άλλα τραπέζια έχουν merged_to = tableNumber (παλιός τρόπος συγχώνευσης)
-                billsRef.orderByChild("merged_to").equalTo(tableNumber).addListenerForSingleValueEvent(new ValueEventListener() {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot sourceSnap) {
+        // 1. Ανάγνωση των δεδομένων του τραπεζιού (μία φορά)
+        tableRef.get().addOnSuccessListener(snapshot -> {
+            Map<String, Object> updates = new HashMap<>();
+            // Πάντα διαγράφουμε το ίδιο το τραπέζι
+            updates.put("/" + tableNumber, null);
+
+            // 2. Αν το τραπέζι έχει merged_from, το προσθέτουμε στη μαζική διαγραφή
+            Map<String, Object> data = (Map<String, Object>) snapshot.getValue();
+            if (data != null && data.containsKey("current_order")) {
+                Map<String, Object> cur = (Map<String, Object>) data.get("current_order");
+                if (cur != null && cur.containsKey("merged_from")) {
+                    String mergedFrom = (String) cur.get("merged_from");
+                    updates.put("/" + mergedFrom, null);
+                }
+            }
+
+            // 3. Αναζήτηση τραπεζιών που έχουν merged_to = tableNumber (παλιός τρόπος συγχώνευσης)
+            billsRef.orderByChild("merged_to").equalTo(tableNumber).get()
+                    .addOnSuccessListener(sourceSnap -> {
                         for (DataSnapshot snap : sourceSnap.getChildren()) {
-                            snap.getRef().removeValue(); // διαγραφή κάθε τραπεζιού-πηγής
+                            updates.put("/" + snap.getKey(), null);
                         }
-                        // 3. Τέλος, διαγράφουμε το ίδιο το τραπέζι
-                        tableRef.removeValue()
+                        // 4. Εκτελούμε ΟΛΕΣ τις διαγραφές ΑΤΟΜΙΚΑ
+                        billsRef.getRef().updateChildren(updates)
                                 .addOnSuccessListener(aVoid -> {
                                     if (onSuccess != null) onSuccess.run();
                                 })
                                 .addOnFailureListener(e -> {
+                                    Log.e(TAG, "Multi-path delete failed", e);
                                     if (onSuccess != null) onSuccess.run();
                                 });
-                    }
+                    })
+                    .addOnFailureListener(e -> {
+                        Log.e(TAG, "Failed to query merged_to", e);
+                        // Έστω και με σφάλμα, διαγράφουμε τουλάχιστον το τραπέζι
+                        billsRef.getRef().updateChildren(updates)
+                                .addOnSuccessListener(aVoid -> { if (onSuccess != null) onSuccess.run(); })
+                                .addOnFailureListener(err -> { if (onSuccess != null) onSuccess.run(); });
+                    });
 
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError error) {
-                        tableRef.removeValue()
-                                .addOnSuccessListener(aVoid -> {
-                                    if (onSuccess != null) onSuccess.run();
-                                });
-                    }
-                });
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {
-                tableRef.removeValue()
-                        .addOnSuccessListener(aVoid -> {
-                            if (onSuccess != null) onSuccess.run();
-                        });
-            }
+        }).addOnFailureListener(e -> {
+            // Αν αποτύχει ακόμα και η ανάγνωση, διαγράφουμε μόνο το τραπέζι
+            Log.e(TAG, "Failed to read table data", e);
+            Map<String, Object> fallbackUpdates = new HashMap<>();
+            fallbackUpdates.put("/" + tableNumber, null);
+            billsRef.getRef().updateChildren(fallbackUpdates)
+                    .addOnSuccessListener(aVoid -> { if (onSuccess != null) onSuccess.run(); })
+                    .addOnFailureListener(err -> { if (onSuccess != null) onSuccess.run(); });
         });
     }
 
@@ -1234,36 +1236,55 @@ public class ActiveTablesActivity extends BaseActivity {
             processNextSplitPartWithRemoval(0);
         } else if (requestCode == REQUEST_SPLIT_ITEMS_PARTIAL && resultCode == RESULT_OK) {
             String partsJson = data.getStringExtra("split_parts");
-            boolean isPartial = data.getBooleanExtra("is_partial", false);
             Type listType = new TypeToken<List<List<SplitItemsActivity.OrderItem>>>(){}.getType();
             List<List<SplitItemsActivity.OrderItem>> parts = new Gson().fromJson(partsJson, listType);
             if (parts == null || parts.isEmpty()) return;
             List<SplitItemsActivity.OrderItem> selectedItems = parts.get(0);
+
             double partTotal = 0;
             for (SplitItemsActivity.OrderItem item : selectedItems) {
                 partTotal += item.price * item.quantity;
             }
             final double finalPartTotal = partTotal;
-            pendingAmount = partTotal;
-            pendingOrderDetails = "Μερική εξόφληση τραπεζιού " + pendingTableNumber;
-            isPartialPayment = true;
-            pendingPaymentItems = new ArrayList<>();
-            for (SplitItemsActivity.OrderItem item : selectedItems) {
-                Map<String, Object> map = new HashMap<>();
-                map.put("name", item.name);
-                map.put("quantity", item.quantity);
-                map.put("price", item.price);
-                map.put("comment", item.comment);
-                map.put("vatPercent", item.vatPercent);
-                pendingPaymentItems.add(map);
-            }
-            removeItemsFromTable(pendingTableNumber, selectedItems, () -> {
-                showPaymentMethodDialog("Μερική Εξόφληση (€" + String.format("%.2f", finalPartTotal) + ")",
-                        () -> {
-                            Toast.makeText(this, "Η μερική εξόφληση ολοκληρώθηκε. Το τραπέζι παραμένει ανοιχτό.", Toast.LENGTH_LONG).show();
+            final List<SplitItemsActivity.OrderItem> finalSelectedItems = selectedItems; // για χρήση στα lambdas
+
+            // ✅ ΝΕΟΣ ΔΙΑΛΟΓΟΣ: επιλογή τρόπου πληρωμής για τη μερική εξόφληση
+            new AlertDialog.Builder(this)
+                    .setTitle("Μερική Εξόφληση - €" + String.format("%.2f", finalPartTotal))
+                    .setMessage("Επιλέξτε τρόπο πληρωμής")
+                    .setPositiveButton("💵 Μετρητά (χωρίς απόδειξη τώρα)", (dialog, which) -> {
+                        // Αφαίρεση items και καταγραφή χωρίς φορολογικό παραστατικό
+                        removeItemsFromTable(pendingTableNumber, finalSelectedItems, () -> {
+                            saveToHistory(HistoryEntry.TYPE_PARTIAL_PAYMENT, pendingTableNumber, finalPartTotal,
+                                    "cash", "Μερική εξόφληση με μετρητά (χωρίς απόδειξη)");
+                            Toast.makeText(ActiveTablesActivity.this,
+                                    "Μερική εξόφληση με μετρητά – Δεν εκτυπώθηκε απόδειξη.\n" +
+                                            "Στο τέλος θα εκδοθεί μία συνολική απόδειξη.", Toast.LENGTH_LONG).show();
                             loadActiveTables();
                         });
-            });
+                    })
+                    .setNegativeButton("💳 Κάρτα (με απόδειξη τώρα)", (dialog, which) -> {
+                        // Κανονική ροή πληρωμής με κάρτα (εκδίδει απόδειξη)
+                        pendingAmount = finalPartTotal;
+                        pendingPaymentItems = new ArrayList<>();
+                        for (SplitItemsActivity.OrderItem item : finalSelectedItems) {
+                            Map<String, Object> map = new HashMap<>();
+                            map.put("name", item.name);
+                            map.put("quantity", item.quantity);
+                            map.put("price", item.price);
+                            map.put("comment", item.comment);
+                            map.put("vatPercent", item.vatPercent);
+                            pendingPaymentItems.add(map);
+                        }
+                        isPartialPayment = true;
+                        showPaymentMethodDialog("Μερική εξόφληση (€" + String.format("%.2f", finalPartTotal) + ")",
+                                () -> {
+                                    Toast.makeText(ActiveTablesActivity.this,
+                                            "Η μερική εξόφληση με κάρτα ολοκληρώθηκε", Toast.LENGTH_SHORT).show();
+                                    loadActiveTables();
+                                });
+                    })
+                    .show();
         }
     }
 
@@ -1284,7 +1305,7 @@ public class ActiveTablesActivity extends BaseActivity {
                             String comment = (String) itemMap.get("comment");
                             if (comment == null) comment = "";
                             for (SplitItemsActivity.OrderItem toRemove : itemsToRemove) {
-                                if (toRemove.name.equals(name) && toRemove.comment.equals(comment)) {
+                                if (toRemove.name.equalsIgnoreCase(name.trim()) && toRemove.comment.trim().equalsIgnoreCase(comment.trim())) {
                                     int removeQty = toRemove.quantity;
                                     if (qty > removeQty) {
                                         qty -= removeQty;
