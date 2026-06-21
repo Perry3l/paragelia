@@ -111,7 +111,6 @@ public class PrinterManagementActivity extends BaseActivity {
                 return;
             }
         }
-        // Όλες έχουν άδεια – προσθήκη
         for (UsbDevice dev : devices) {
             boolean alreadyExists = false;
             for (PrinterDevice p : printerManager.getPrinters()) {
@@ -133,7 +132,6 @@ public class PrinterManagementActivity extends BaseActivity {
         Toast.makeText(this, "Η σάρωση ολοκληρώθηκε", Toast.LENGTH_SHORT).show();
     }
 
-    // ---------- Adapter για τη λίστα εκτυπωτών με δυνατότητα επεξεργασίας ----------
     private class PrinterAdapterForManagement extends RecyclerView.Adapter<PrinterAdapterForManagement.ViewHolder> {
         private List<PrinterDevice> printers;
 
@@ -161,11 +159,11 @@ public class PrinterManagementActivity extends BaseActivity {
             switchImageMode.setChecked(printer.isImageMode());
             switchImageMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
                 printer.setImageMode(isChecked);
-                // προαιρετικά: αποθήκευση αμέσως
+
                 printerManager.savePrintersConfig();
             });
 
-            // Spinner target
+
             ArrayAdapter<String> targetAdapter = new ArrayAdapter<>(holder.itemView.getContext(),
                     android.R.layout.simple_spinner_item, PrinterAdapter.TARGETS);
             targetAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
@@ -185,7 +183,6 @@ public class PrinterManagementActivity extends BaseActivity {
                 @Override public void onNothingSelected(AdapterView<?> parent) {}
             });
 
-            // Κουμπί επεξεργασίας ονόματος
             holder.btnEditName.setOnClickListener(v -> {
                 EditText input = new EditText(PrinterManagementActivity.this);
                 input.setText(printer.getName());
@@ -195,9 +192,6 @@ public class PrinterManagementActivity extends BaseActivity {
                         .setPositiveButton("Αποθήκευση", (dialog, which) -> {
                             String newName = input.getText().toString().trim();
                             if (!newName.isEmpty()) {
-                                // Δεν μπορούμε να αλλάξουμε το όνομα εύκολα – θα αφαιρέσουμε και θα προσθέσουμε νέο αντικείμενο?
-                                // Απλά αποθηκεύουμε προσωρινά, αλλά το PrinterDevice δεν έχει setter για όνομα.
-                                // Για απλότητα, θα δημιουργήσουμε νέο αντικείμενο ίδιου τύπου.
                                 replacePrinter(printer, newName);
                             }
                         })
@@ -205,7 +199,6 @@ public class PrinterManagementActivity extends BaseActivity {
                         .show();
             });
 
-            // Κουμπί δοκιμής εκτύπωσης
             holder.btnTestPrint.setOnClickListener(v -> {
                 if (!printer.isAvailable()) {
                     Toast.makeText(PrinterManagementActivity.this, "Ο εκτυπωτής δεν είναι διαθέσιμος", Toast.LENGTH_SHORT).show();
@@ -219,7 +212,6 @@ public class PrinterManagementActivity extends BaseActivity {
                 Toast.makeText(PrinterManagementActivity.this, "Εκτύπωση δοκιμής σε " + printer.getName(), Toast.LENGTH_SHORT).show();
             });
 
-            // Κουμπί διαγραφής (μόνο για USB και IP)
             boolean removable = printer instanceof UsbPrinter || printer instanceof NetworkPrinter;
             holder.btnRemove.setVisibility(removable ? View.VISIBLE : View.GONE);
             holder.btnRemove.setOnClickListener(v -> {
@@ -238,7 +230,7 @@ public class PrinterManagementActivity extends BaseActivity {
                 NetworkPrinter old = (NetworkPrinter) oldPrinter;
                 newPrinter = new NetworkPrinter(newName, old.getTarget(), old.getIp(), old.getPort());
             } else if (oldPrinter instanceof BuiltinPrinter) {
-                // Δεν επιτρέπεται αλλαγή ονόματος ενσωματωμένου
+
                 Toast.makeText(PrinterManagementActivity.this, "Δεν μπορείτε να αλλάξετε όνομα ενσωματωμένου εκτυπωτή", Toast.LENGTH_SHORT).show();
                 return;
             }

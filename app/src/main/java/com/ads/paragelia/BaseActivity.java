@@ -23,12 +23,11 @@ public class BaseActivity extends AppCompatActivity {
 
     private int tapCount = 0;
     private static final int REQUIRED_TAPS = 5;
-    private static final long TAP_RESET_DELAY = 1000;  // 1 δευτερόλεπτο
+    private static final long TAP_RESET_DELAY = 1000;
 
     private final Runnable hideRunnable = this::hideSystemUI;
     private final Runnable resetTapRunnable = () -> tapCount = 0;
 
-    // Memory overlay components
     private LinearLayout memoryOverlay;
     private TextView tvMemUsed, tvMemAvailable, tvMemMax;
     private Handler memHandler = new Handler(Looper.getMainLooper());
@@ -46,12 +45,6 @@ public class BaseActivity extends AppCompatActivity {
         });
     }
 
-    // ======================== MEMORY OVERLAY METHODS ========================
-
-    /**
-     * Ελέγχει τις ρυθμίσεις και εμφανίζει ή κρύβει το debug overlay μνήμης.
-     * Κλήση από onResume() ή από SettingsActivity όταν αλλάζει η ρύθμιση.
-     */
     protected void applyMemoryOverlaySetting() {
         SharedPreferences prefs = getSharedPreferences("debug_prefs", MODE_PRIVATE);
         boolean showOverlay = prefs.getBoolean("show_memory_overlay", false);
@@ -63,7 +56,7 @@ public class BaseActivity extends AppCompatActivity {
     }
 
     protected void showMemoryOverlay() {
-        if (memoryOverlay != null) return; // ήδη ορατό
+        if (memoryOverlay != null) return;
 
         LayoutInflater inflater = LayoutInflater.from(this);
         memoryOverlay = (LinearLayout) inflater.inflate(R.layout.debug_memory_overlay, null);
@@ -79,7 +72,7 @@ public class BaseActivity extends AppCompatActivity {
             @Override
             public void run() {
                 updateMemoryInfo();
-                memHandler.postDelayed(this, 1000); // κάθε 1 δευτερόλεπτο
+                memHandler.postDelayed(this, 1000);
             }
         };
         memHandler.post(memUpdater);
@@ -106,14 +99,12 @@ public class BaseActivity extends AppCompatActivity {
             tvMemMax.setText(String.format("Max: %d MB", mi.totalMem / (1024 * 1024)));
     }
 
-    // ======================== TOUCH / FULLSCREEN LOGIC ========================
 
     @SuppressLint("ClickableViewAccessibility")
     @Override
     protected void onResume() {
         super.onResume();
 
-        // Εφαρμογή της ρύθμισης memory overlay (θα εμφανιστεί/κρυφτεί ανάλογα)
         applyMemoryOverlaySetting();
 
         View root = findViewById(android.R.id.content);
@@ -130,10 +121,10 @@ public class BaseActivity extends AppCompatActivity {
                             showSystemUI();
                         }
                         handler.removeCallbacks(hideRunnable);
-                        handler.postDelayed(hideRunnable, 2000); // κρύψε ξανά μετά από 2 δευτερόλεπτα
+                        handler.postDelayed(hideRunnable, 2000);
                     }
                 }
-                return false; // μην καταναλώνεις το event, άφησε το να περάσει στα child views
+                return false;
             });
         }
     }

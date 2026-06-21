@@ -33,25 +33,23 @@ public class SplitItemsActivity extends BaseActivity {
 
     private SplitItemsAdapter adapter;
 
-    // ---------- Data classes (πρέπει να είναι public static για Gson) ----------
     public static class OrderItem {
         String name;
         int quantity;
         double price;
         String comment;
-        double vatPercent;   // ΝΕΟ ΠΕΔΙΟ
+        double vatPercent;
 
-        public OrderItem() {} // για Gson
+        public OrderItem() {}
 
         public OrderItem(String name, int quantity, double price, String comment) {
             this.name = name;
             this.quantity = quantity;
             this.price = price;
             this.comment = comment;
-            this.vatPercent = 13; // default
+            this.vatPercent = 13;
         }
 
-        // Νέος constructor με vatPercent
         public OrderItem(String name, int quantity, double price, String comment, double vatPercent) {
             this.name = name;
             this.quantity = quantity;
@@ -67,7 +65,7 @@ public class SplitItemsActivity extends BaseActivity {
         int selectedQty;
         double unitPrice;
         String comment;
-        double vatPercent;   // ΝΕΟ ΠΕΔΙΟ
+        double vatPercent;
 
         SplitItem(String name, int qty, double price, String comment, double vatPercent) {
             this.name = name;
@@ -93,7 +91,7 @@ public class SplitItemsActivity extends BaseActivity {
         Map<String, Object> tableData = CurrentTableHolder.getTableData();
         if (tableData != null) {
             parseItemsFromTableData(tableData);
-            CurrentTableHolder.clear(); // καθαρισμός για να μην κρατάμε άσκοπα δεδομένα
+            CurrentTableHolder.clear();
         }
 
         tvTableInfo = findViewById(R.id.tvTableInfo);
@@ -149,7 +147,6 @@ public class SplitItemsActivity extends BaseActivity {
             }
         }
 
-        // Συγχώνευση ίδιων ειδών
         for (OrderItem oi : allItems) {
             boolean found = false;
             for (SplitItem si : items) {
@@ -185,7 +182,7 @@ public class SplitItemsActivity extends BaseActivity {
 
         for (SplitItem si : items) {
             if (si.selectedQty > 0) {
-                // Προσθήκη του vatPercent στο OrderItem
+
                 part.add(new OrderItem(si.name, si.selectedQty, si.unitPrice, si.comment, si.vatPercent));
                 partTotal += si.selectedQty * si.unitPrice;
             }
@@ -198,7 +195,6 @@ public class SplitItemsActivity extends BaseActivity {
 
         splitParts.add(part);
 
-        // Αφαίρεση επιλεγμένων ποσοτήτων από τα original
         Iterator<SplitItem> iterator = items.iterator();
         while (iterator.hasNext()) {
             SplitItem si = iterator.next();
@@ -209,7 +205,6 @@ public class SplitItemsActivity extends BaseActivity {
             }
         }
 
-        // Ενημέρωση υπολοίπου
         totalRemaining -= partTotal;
 
         adapter.notifyDataSetChanged();
@@ -217,7 +212,6 @@ public class SplitItemsActivity extends BaseActivity {
 
         Toast.makeText(this, "Το μέρος προστέθηκε (€" + String.format("%.2f", partTotal) + ")", Toast.LENGTH_SHORT).show();
 
-        // Αν δεν έμειναν άλλα είδη, μπορούμε να τελειώσουμε αυτόματα
         if (items.isEmpty()) {
             Toast.makeText(this, "Όλα τα είδη κατανεμήθηκαν!", Toast.LENGTH_SHORT).show();
             finishAndReturn();
@@ -236,7 +230,6 @@ public class SplitItemsActivity extends BaseActivity {
         finish();
     }
 
-    // ------------------ Adapter ------------------
     private class SplitItemsAdapter extends RecyclerView.Adapter<SplitItemsAdapter.ViewHolder> {
         private List<SplitItem> items;
         private Runnable onQuantityChanged;
@@ -267,7 +260,6 @@ public class SplitItemsActivity extends BaseActivity {
             holder.tvPrice.setText(String.format("€%.2f", item.unitPrice));
             holder.tvAvailable.setText("Διαθέσιμα: " + item.originalQty);
 
-            // Αφαίρεση παλιού listener
             if (holder.etQuantity.getTag() instanceof android.text.TextWatcher) {
                 holder.etQuantity.removeTextChangedListener((android.text.TextWatcher) holder.etQuantity.getTag());
             }

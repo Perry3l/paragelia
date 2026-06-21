@@ -12,7 +12,7 @@ public class NetworkPrinter implements PrinterDevice {
     private String name, ip;
     private String target;
     private int port;
-    private boolean imageMode = false;   // ΝΕΟ
+    private boolean imageMode = false;
     private Socket socket;
     private OutputStream outputStream;
 

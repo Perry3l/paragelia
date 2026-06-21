@@ -37,7 +37,6 @@ public class MenuRepository {
         return categoryTargets.getOrDefault(category, "RECEIPT");
     }
 
-    // Φόρτωση από cache ή Firebase
     public void loadMenu(Context context, OnMenuLoadedListener listener) {
         Map<String, Object> cached = MenuCache.loadProducts(context);
         if (cached != null) {
@@ -109,7 +108,7 @@ public class MenuRepository {
                         Object vatObj = productObj.get("vatPercent");
                         vatPercent = vatObj instanceof Number ? ((Number) vatObj).doubleValue() : 13.0;
                     }
-                    // ingredients
+
                     Object ingredientsObj = productObj.get("ingredients");
                     if (ingredientsObj instanceof Map) {
                         Map<String, Object> ingsMap = (Map<String, Object>) ingredientsObj;
@@ -124,7 +123,7 @@ public class MenuRepository {
                             }
                         }
                     }
-                    // addons
+
                     Object addonsObj = productObj.get("addons");
                     if (addonsObj instanceof Map) {
                         Map<String, Object> addMap = (Map<String, Object>) addonsObj;
@@ -144,7 +143,7 @@ public class MenuRepository {
                             }
                         }
                     }
-                    // variants
+
                     Object variantsObj = productObj.get("variants");
                     if (variantsObj instanceof Map) {
                         Map<String, Object> varMap = (Map<String, Object>) variantsObj;
@@ -170,7 +169,7 @@ public class MenuRepository {
                 ProductSelectionBottomSheet.ProductItem item = new ProductSelectionBottomSheet.ProductItem(
                         productName, price, vatPercent, ingredients, addons);
                 item.category = category;
-                item.variants = variants;   // αποθήκευση παραλλαγών
+                item.variants = variants;
                 productList.add(item);
                 allProducts.add(item);
             }

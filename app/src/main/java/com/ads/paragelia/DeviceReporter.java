@@ -26,9 +26,6 @@ import java.util.concurrent.TimeUnit;
 
 import javax.xml.transform.Result;
 
-/**
- * Κεντρικός μηχανισμός καταγραφής σφαλμάτων και αναφοράς κατάστασης συσκευής.
- */
 public class DeviceReporter {
     private static final String TAG = "DeviceReporter";
     private static DeviceReporter instance;
@@ -50,11 +47,6 @@ public class DeviceReporter {
         return instance;
     }
 
-    /**
-     * Καταγράφει ένα σφάλμα (exception) με λεπτομέρειες.
-     * @param tag       Ετικέτα (π.χ. "PaymentManager")
-     * @param throwable Το exception
-     */
     public void logError(String tag, Throwable throwable) {
         if (storeCode == null) return;
 
@@ -79,9 +71,7 @@ public class DeviceReporter {
                 .addOnFailureListener(e -> Log.e(TAG, "Failed to send error log", e));
     }
 
-    /**
-     * Καταγράφει ένα προειδοποιητικό ή πληροφοριακό μήνυμα.
-     */
+
     public void logInfo(String tag, String message) {
         if (storeCode == null) return;
         Map<String, Object> infoData = new HashMap<>();
@@ -97,10 +87,6 @@ public class DeviceReporter {
         ref.setValue(infoData);
     }
 
-    /**
-     * Αναφέρει την τρέχουσα κατάσταση της συσκευής (battery, memory, printer, network).
-     * Καλείται περιοδικά από WorkManager.
-     */
     public void reportDeviceStatus() {
         if (storeCode == null) return;
 
@@ -109,7 +95,6 @@ public class DeviceReporter {
         status.put("deviceName", deviceName);
         status.put("appVersion", getAppVersion());
 
-        // Μπαταρία
         android.os.BatteryManager bm = (android.os.BatteryManager) context.getSystemService(Context.BATTERY_SERVICE);
         if (bm != null) {
             int batteryPct = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
@@ -118,7 +103,6 @@ public class DeviceReporter {
             status.put("isCharging", isCharging);
         }
 
-        // Μνήμη
         ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
         ActivityManager am = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
         if (am != null) {
@@ -127,7 +111,6 @@ public class DeviceReporter {
             status.put("totalMemMB", mi.totalMem / (1024 * 1024));
         }
 
-        // Δίκτυο
         android.net.ConnectivityManager cm = (android.net.ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
         android.net.NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
         boolean isConnected = activeNetwork != null && activeNetwork.isConnected();
@@ -136,7 +119,6 @@ public class DeviceReporter {
             status.put("networkType", activeNetwork.getTypeName());
         }
 
-        // Εκτυπωτής (αν υπάρχει built-in)
         try {
             com.zcs.sdk.DriverManager driverManager = com.zcs.sdk.DriverManager.getInstance();
             com.zcs.sdk.Printer printer = driverManager.getPrinter();
@@ -164,7 +146,6 @@ public class DeviceReporter {
         }
     }
 
-    // ---------- Worker για περιοδική αναφορά ----------
     public static class StatusWorker extends Worker {
         public StatusWorker(Context context, WorkerParameters params) {
             super(context, params);
@@ -178,10 +159,7 @@ public class DeviceReporter {
         }
     }
 
-    /**
-     * Ξεκινά την περιοδική αποστολή status (κάθε 2 ώρες).
-     * Καλείται από το Application ή την MainActivity.
-     */
+
     public static void startPeriodicStatusReporting(Context context) {
         Constraints constraints = new Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)

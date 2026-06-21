@@ -42,7 +42,7 @@ public class BitmapPrinterHelper {
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 int pixel = bitmap.getPixel(x, y);
-                if (Color.red(pixel) < 128) { // μαύρο
+                if (Color.red(pixel) < 128) {
                     int byteIndex = y * bytesPerLine + (x / 8);
                     int bit = 7 - (x % 8);
                     raster[byteIndex] |= (1 << bit);
@@ -50,11 +50,10 @@ public class BitmapPrinterHelper {
             }
         }
 
-        // GS v 0 (ESC/POS raster command)
-        baos.write(29);  // GS
-        baos.write(118); // v
-        baos.write(48);  // 0
-        baos.write(0);   // m = 0
+        baos.write(29);
+        baos.write(118);
+        baos.write(48);
+        baos.write(0);
         baos.write((byte)(bytesPerLine % 256));
         baos.write((byte)(bytesPerLine / 256));
         baos.write((byte)(height % 256));

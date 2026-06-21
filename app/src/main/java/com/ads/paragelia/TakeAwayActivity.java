@@ -26,11 +26,9 @@ public class TakeAwayActivity extends BaseActivity {
 
         fetchNextOrderNumber(orderNumber -> {
             currentOrderNumber = orderNumber;
-            // Ανοίγουμε το BottomSheet με τον αριθμό παραγγελίας
             ProductSelectionBottomSheet bottomSheet = ProductSelectionBottomSheet.newInstance("TA-" + orderNumber);
             bottomSheet.show(getSupportFragmentManager(), "takeaway_sheet");
 
-            // Όταν κλείσει το BottomSheet, κλείνουμε και το Activity
             bottomSheet.setOnDismissListener(dialog -> finish());
         });
     }

@@ -33,7 +33,7 @@ public class SelectProductActivity extends BaseActivity {
     private DatabaseReference productsRef;
     private List<String> categoryList = new ArrayList<>();
     private List<String> productList = new ArrayList<>();
-    private Map<String, Object> currentProductPrices; // Τιμές ως Object (μπορεί Long ή Double)
+    private Map<String, Object> currentProductPrices;
     private String selectedCategory = null;
     private String selectedProduct = null;
 
@@ -80,7 +80,7 @@ public class SelectProductActivity extends BaseActivity {
                 return;
             }
             int quantity = Integer.parseInt(quantityStr);
-            // Ασφαλής μετατροπή τιμής από Object σε double
+
             double price = getPriceAsDouble(currentProductPrices.get(selectedProduct));
             Intent resultIntent = new Intent();
             resultIntent.putExtra("product_name", selectedProduct);
@@ -91,7 +91,6 @@ public class SelectProductActivity extends BaseActivity {
         });
     }
 
-    // Βοηθητική μέθοδος για μετατροπή Object (Long/Double) σε double
     private double getPriceAsDouble(Object value) {
         if (value instanceof Double) {
             return (Double) value;
@@ -169,13 +168,13 @@ public class SelectProductActivity extends BaseActivity {
         @Override
         public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
             String prod = products.get(position);
-            // Ασφαλής ανάκτηση τιμής
+
             Object priceObj = currentProductPrices.get(prod);
             double price = getPriceAsDouble(priceObj);
             holder.textView.setText(prod + " - €" + String.format("%.2f", price));
             holder.itemView.setOnClickListener(v -> {
                 selectedProduct = prod;
-                // Optional: visual feedback
+
                 Toast.makeText(SelectProductActivity.this, "Επιλέχθηκε: " + prod, Toast.LENGTH_SHORT).show();
             });
         }

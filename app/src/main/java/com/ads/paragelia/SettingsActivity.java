@@ -31,15 +31,10 @@ public class SettingsActivity extends BaseActivity {
     private SharedPreferences prefsa;
     public static final String KEY_TAKEAWAY_ENABLED = "takeaway_enabled";
     public static final String KEY_DELIVERY_ENABLED = "delivery_enabled";
-
-    // Order-Only Mode constants
     public static final String PREFS_ORDER_MODE = "order_mode_prefs";
     public static final String KEY_ORDER_ONLY_MODE = "order_only_mode";
     private static final String ORDER_ONLY_CODE = "1234";
-
-    // ----- ΝΕΟ: κωδικός πρόσβασης για αλλαγή store code -----
-    private static final String MASTER_PASSWORD = "admin123"; // Μπορείτε να το αλλάξετε
-
+    private static final String MASTER_PASSWORD = "admin123";
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -116,7 +111,6 @@ public class SettingsActivity extends BaseActivity {
         Button btnRestart = findViewById(R.id.btnRestartApp);
         btnRestart.setOnClickListener(v -> restartApp());
 
-        // ----- NEW: Order-Only Mode Toggle Button -----
         Button btnToggleOrderMode = findViewById(R.id.btnToggleOrderMode);
         btnToggleOrderMode.setOnClickListener(v -> {
             SharedPreferences orderPrefs = getSharedPreferences(PREFS_ORDER_MODE, MODE_PRIVATE);
@@ -145,17 +139,15 @@ public class SettingsActivity extends BaseActivity {
             builder.show();
         });
 
-        // ----- NEW: Αλλαγή κωδικού καταστήματος -----
         Button btnChangeStoreCode = findViewById(R.id.btnChangeStoreCode);
         btnChangeStoreCode.setOnClickListener(v -> showChangeStoreCodeDialog());
     }
 
-    // ---------- Μέθοδος για αλλαγή κωδικού καταστήματος ----------
     private void showChangeStoreCodeDialog() {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("Αλλαγή κωδικού καταστήματος");
 
-        // Δημιουργία layout με δύο πεδία
+
         final EditText inputPassword = new EditText(this);
         inputPassword.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         inputPassword.setHint("Κωδικός πρόσβασης");
@@ -185,16 +177,16 @@ public class SettingsActivity extends BaseActivity {
                 return;
             }
 
-            // Αποθήκευση νέου κωδικού
+
             StoreConfig.saveStoreCode(this, newCode);
             FirebaseHelper.init(newCode);
 
-            // Καθαρισμός cache μενού
+
             MenuCache.clear(this);
 
             Toast.makeText(this, "Ο κωδικός καταστήματος άλλαξε. Η εφαρμογή θα επανεκκινηθεί.", Toast.LENGTH_LONG).show();
 
-            // Επανεκκίνηση
+
             restartApp();
         });
 
@@ -202,7 +194,6 @@ public class SettingsActivity extends BaseActivity {
         builder.show();
     }
 
-    // ---------- Οι υπόλοιπες μέθοδοι παραμένουν ίδιες ----------
     private void resolveAllMerges() {
         DatabaseReference billsRef = FirebaseHelper.getReference("active_bills");
         billsRef.addListenerForSingleValueEvent(new ValueEventListener() {

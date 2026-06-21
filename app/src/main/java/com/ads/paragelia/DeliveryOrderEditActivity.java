@@ -63,7 +63,6 @@ public class DeliveryOrderEditActivity extends BaseActivity {
         TextView tvOrderTitle = findViewById(R.id.tvOrderTitle);
         tvOrderTitle.setText("Παραγγελία #" + orderNumber);
 
-// Κάνουμε τα πεδία προσβάσιμα σε όλη την κλάση για να τα διαβάσουμε στην αποθήκευση
         final EditText etCustomerName = findViewById(R.id.etCustomerName);
         final EditText etCustomerPhone = findViewById(R.id.etCustomerPhone);
         final EditText etCustomerAddress = findViewById(R.id.etCustomerAddress);
@@ -74,7 +73,6 @@ public class DeliveryOrderEditActivity extends BaseActivity {
         etCustomerAddress.setText(customerAddress != null ? customerAddress : "");
         etCustomerNotes.setText(customerNotes != null ? customerNotes : "");
 
-        // Αποθηκεύουμε τα references των EditText σε μεταβλητές κλάσης για να τα βρει η saveChanges
         this.etNameRef = etCustomerName;
         this.etPhoneRef = etCustomerPhone;
         this.etAddressRef = etCustomerAddress;
@@ -85,7 +83,6 @@ public class DeliveryOrderEditActivity extends BaseActivity {
         adapter = new ItemsAdapter(items);
         rvItems.setAdapter(adapter);
 
-        // Φόρτωση υπαρχόντων items από Firebase
         loadItems();
 
         Button btnAddProduct = findViewById(R.id.btnAddProduct);
@@ -96,9 +93,6 @@ public class DeliveryOrderEditActivity extends BaseActivity {
             ProductSelectionBottomSheet bottomSheet = ProductSelectionBottomSheet.newInstance("DL-" + orderNumber);
             bottomSheet.show(getSupportFragmentManager(), "add_product");
             bottomSheet.setOnDismissListener(dialog -> {
-                // Μετά το κλείσιμο, ελέγχουμε αν υπάρχουν νέα items στο CurrentTableHolder;
-                // Εναλλακτικά, μπορούμε να ανακτήσουμε τα επιλεγμένα items από την bottom sheet.
-                // Για απλότητα, θα επαναφορτώσουμε όλη την παραγγελία.
                 loadItems();
             });
         });
@@ -108,7 +102,6 @@ public class DeliveryOrderEditActivity extends BaseActivity {
     }
 
     private void loadItems() {
-        // Παίρνουμε τη βάση της παραγγελίας (π.χ. το DL-9)
         DatabaseReference baseOrderRef = FirebaseHelper.getReference("delivery_orders").child(orderId);
 
         baseOrderRef.addListenerForSingleValueEvent(new com.google.firebase.database.ValueEventListener() {
@@ -116,23 +109,20 @@ public class DeliveryOrderEditActivity extends BaseActivity {
             public void onDataChange(@NonNull com.google.firebase.database.DataSnapshot snapshot) {
                 com.google.firebase.database.DataSnapshot targetItemsSnap = null;
 
-                // 1. Έλεγχος για τη ΝΕΑ σωστή δομή (DL-X / current_order / items)
                 if (snapshot.hasChild("current_order") && snapshot.child("current_order").hasChild("items")) {
                     targetItemsSnap = snapshot.child("current_order").child("items");
-                    orderRef = snapshot.child("current_order").getRef(); // Ενημέρωση του ref για την Αποθήκευση
+                    orderRef = snapshot.child("current_order").getRef();
                 }
-                // 2. Έλεγχος για την ΠΑΛΙΑ δομή (DL-X / τυχαίο_κλειδί / current_order / items)
                 else {
                     for (com.google.firebase.database.DataSnapshot child : snapshot.getChildren()) {
                         if (child.hasChild("current_order") && child.child("current_order").hasChild("items")) {
                             targetItemsSnap = child.child("current_order").child("items");
-                            orderRef = child.child("current_order").getRef(); // Ενημέρωση του ref για την Αποθήκευση
+                            orderRef = child.child("current_order").getRef();
                             break;
                         }
                     }
                 }
 
-                // Αν βρέθηκαν είδη, τα περνάμε στη λίστα
                 if (targetItemsSnap != null) {
                     items.clear();
                     for (com.google.firebase.database.DataSnapshot itemSnap : targetItemsSnap.getChildren()) {
@@ -160,7 +150,6 @@ public class DeliveryOrderEditActivity extends BaseActivity {
     }
 
     private void saveChanges() {
-        // 1. Προετοιμασία των items
         List<Map<String, Object>> itemsMap = new ArrayList<>();
         for (OrderItem item : items) {
             Map<String, Object> map = new HashMap<>();
@@ -172,14 +161,12 @@ public class DeliveryOrderEditActivity extends BaseActivity {
             itemsMap.add(map);
         }
 
-        // 2. Προετοιμασία των στοιχείων του πελάτη
         Map<String, Object> customerMap = new HashMap<>();
         customerMap.put("name", etNameRef.getText().toString().trim());
         customerMap.put("phone", etPhoneRef.getText().toString().trim());
         customerMap.put("address", etAddressRef.getText().toString().trim());
         customerMap.put("notes", etNotesRef.getText().toString().trim());
 
-        // 3. Ομαδική ενημέρωση στο Firebase (updateChildren)
         Map<String, Object> updates = new HashMap<>();
         updates.put("items", itemsMap);
         updates.put("customer", customerMap);

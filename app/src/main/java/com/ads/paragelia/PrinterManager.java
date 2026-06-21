@@ -1,4 +1,3 @@
-// PrinterManager.java
 package com.ads.paragelia;
 
 import android.content.Context;
@@ -41,7 +40,6 @@ public class PrinterManager {
         return null;
     }
 
-    // Βρίσκει εκτυπωτές που ταιριάζουν με target (π.χ. "KITCHEN")
     public List<PrinterDevice> getPrintersByTarget(String target) {
         List<PrinterDevice> result = new ArrayList<>();
         for (PrinterDevice p : printers) {
@@ -50,7 +48,6 @@ public class PrinterManager {
         return result;
     }
 
-    // ---- Αποθήκευση/Φόρτωση ρυθμίσεων από SharedPreferences (για IP & USB) ----
 
     public void savePrintersConfig() {
         JSONArray arr = new JSONArray();
@@ -108,7 +105,7 @@ public class PrinterManager {
                             pendingUsbProfiles.add(profile);
                         }
                         break;
-                    // case "BUILTIN" – Δεν δημιουργούμε BuiltinPrinter εδώ. Θα το κάνει η PrinterActivity.
+
                 }
             }
         } catch (Exception ignored) {}

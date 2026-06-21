@@ -92,16 +92,13 @@ public class PrinterActivity extends BaseActivity {
 
         tvStatus.setText("Κατάσταση: Ακρόαση παραγγελιών");
 
-        // Κεντρικός PrinterManager
         printerManager = PrinterManager.getInstance(this);
         printerManager.loadPrintersConfig();
 
-        // Προσθήκη ενσωματωμένου εκτυπωτή μόνο αν δεν υπάρχει ήδη
         if (printerManager.getPrinterByName("Ενσωματωμένος") == null) {
             printerManager.addPrinter(new BuiltinPrinter(mPrinter, "Ενσωματωμένος", "RECEIPT"));
         }
 
-        // RecyclerView & Adapter
         rvPrinters.setLayoutManager(new LinearLayoutManager(this));
         printerAdapter = new PrinterAdapter(printerManager.getPrinters(), new PrinterAdapter.OnPrinterActionListener() {
             @Override
@@ -125,7 +122,6 @@ public class PrinterActivity extends BaseActivity {
         ensureUsbPrintersInList();
         scanAndAddUsbPrinters();
 
-        // Buttons
         findViewById(R.id.btnAddNetworkPrinter).setOnClickListener(v -> showAddNetworkPrinterDialog());
         findViewById(R.id.btnViewTables).setOnClickListener(v -> startActivity(new Intent(this, ActiveTablesActivity.class)));
 

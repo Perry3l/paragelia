@@ -34,7 +34,7 @@ public class HistoryActivity extends BaseActivity {
     private Button btnLoadMore;
 
     private static final int PAGE_SIZE = 50;
-    private String lastKey = null;               // το κλειδί της τελευταίας εγγραφής που φορτώθηκε
+    private String lastKey = null;
     private boolean isLoading = false;
     private boolean allLoaded = false;
 
@@ -52,7 +52,6 @@ public class HistoryActivity extends BaseActivity {
 
         historyRef = FirebaseHelper.getReference("history");
 
-        // Πρώτη φόρτωση
         loadInitialHistory();
 
         btnLoadMore.setOnClickListener(v -> loadMoreHistory());
@@ -71,14 +70,12 @@ public class HistoryActivity extends BaseActivity {
                     if (entry != null && !HistoryEntry.TYPE_TABLE_CANCELLED.equals(entry.type)
                             && !HistoryEntry.TYPE_ORDER_COMPLETED.equals(entry.type)) {
                         historyList.add(entry);
-                        lastKey = snap.getKey();  // κρατάμε το πρώτο (παλαιότερο) κλειδί
+                        lastKey = snap.getKey();
                     }
                 }
-                // Η Firebase επιστρέφει ταξινομημένα αύξοντα, άρα πρέπει να αντιστρέψουμε
                 java.util.Collections.reverse(historyList);
                 adapter.notifyDataSetChanged();
 
-                // Αν πήραμε λιγότερα από PAGE_SIZE, σημαίνει ότι φτάσαμε στο τέλος
                 allLoaded = (snapshot.getChildrenCount() < PAGE_SIZE);
                 updateLoadMoreButton();
                 isLoading = false;
@@ -95,8 +92,6 @@ public class HistoryActivity extends BaseActivity {
         if (isLoading || allLoaded) return;
 
         isLoading = true;
-        // Φορτώνουμε τα αμέσως παλαιότερα: ξεκινάμε από το lastKey, παραλείπουμε το ίδιο το lastKey,
-        // και παίρνουμε τα προηγούμενα PAGE_SIZE.
         Query query = historyRef.orderByKey().endAt(lastKey).limitToLast(PAGE_SIZE + 1);
 
         query.addListenerForSingleValueEvent(new ValueEventListener() {
@@ -107,11 +102,9 @@ public class HistoryActivity extends BaseActivity {
                 String newLastKey = null;
 
                 for (DataSnapshot snap : snapshot.getChildren()) {
-                    // Το πρώτο (παλαιότερο) κλειδί θα είναι το νέο lastKey
                     if (newLastKey == null) {
                         newLastKey = snap.getKey();
                     }
-                    // Αν φτάσαμε στο lastKey που ήδη είχαμε, το пропускаμε
                     if (snap.getKey().equals(lastKey)) continue;
 
                     HistoryEntry entry = snap.getValue(HistoryEntry.class);
@@ -122,12 +115,10 @@ public class HistoryActivity extends BaseActivity {
                     }
                 }
 
-                // Προσάρτηση στο τέλος της λίστας (χωρίς αντιστροφή, γιατί είναι ήδη παλαιότερα)
                 historyList.addAll(olderEntries);
                 adapter.notifyDataSetChanged();
                 lastKey = newLastKey;
 
-                // Αν πήραμε λιγότερα από αυτά που ζητήσαμε, τελειώσαμε
                 if (count < PAGE_SIZE) {
                     allLoaded = true;
                 }
@@ -150,7 +141,6 @@ public class HistoryActivity extends BaseActivity {
         }
     }
 
-    // ================== Adapter ==================
     private class HistoryAdapter extends RecyclerView.Adapter<HistoryAdapter.ViewHolder> {
         private List<HistoryEntry> list;
 

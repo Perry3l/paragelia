@@ -13,7 +13,7 @@ public class BuiltinPrinter implements PrinterDevice {
     private Printer mPrinter;
     private String name;
     private String target;
-    private boolean imageMode = false;   // ΝΕΟ
+    private boolean imageMode = false;
 
     public BuiltinPrinter(Printer printer) {
         this.mPrinter = printer;

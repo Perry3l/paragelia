@@ -70,7 +70,6 @@ public class PrinterSettingsActivity extends BaseActivity {
         boolean overlayEnabled = prefsOverlay.getBoolean("show_memory_overlay", false);
         switchMemoryOverlay.setChecked(overlayEnabled);
 
-        // Order‑only mode
         SharedPreferences orderPrefs = getSharedPreferences(SettingsActivity.PREFS_ORDER_MODE, MODE_PRIVATE);
         boolean orderOnlyEnabled = orderPrefs.getBoolean(SettingsActivity.KEY_ORDER_ONLY_MODE, false);
         switchOrderOnlyMode.setChecked(orderOnlyEnabled);
@@ -90,7 +89,7 @@ public class PrinterSettingsActivity extends BaseActivity {
         });
 
         switchOrderOnlyMode.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            // Αναστρέφουμε προσωρινά για να μην αλλάξει χωρίς επιβεβαίωση
+
             switchOrderOnlyMode.setChecked(!isChecked);
             showOrderOnlyPasswordDialog(isChecked);
         });

@@ -39,12 +39,11 @@ public class PaymentManager {
     private final SharedPreferences prefs;
     private final ExecutorService paymentExecutor = Executors.newSingleThreadExecutor();
 
-    // Προσωρινά στοιχεία πληρωμής
     private double pendingAmount;
     private String pendingOrderDetails;
     private String pendingTableNumber;
     private List<Map<String, Object>> pendingPaymentItems;
-    private int pendingPaymentType;  // 3=cash, 7=card
+    private int pendingPaymentType;
     private PaymentCallback pendingCallback;
     private String pendingPosUtid = "";
     private String pendingEpsilonSignature = "";
@@ -54,7 +53,6 @@ public class PaymentManager {
         this.prefs = activity.getSharedPreferences("my_prefs", Activity.MODE_PRIVATE);
     }
 
-    // Ξεκινά πληρωμή με μετρητά
     public void startCashPayment(double amount, String tableNumber, String orderDetails,
                                  List<Map<String, Object>> items, PaymentCallback callback) {
         this.pendingAmount = amount;
@@ -72,17 +70,14 @@ public class PaymentManager {
         sendToEpsilonProvider();
     }
 
-    /**
-     * ΕΚΚΙΝΗΣΗ ΠΛΗΡΩΜΗΣ ΜΕ ΚΑΡΤΑ (EFT-POS)
-     * Αποθηκεύει τα στοιχεία και ξεκινά την ασφαλή διαδικασία λήψης Payment Token.
-     */
+
     public void startPosPayment(double amount, String tableNumber, String details,
                                 List<Map<String, Object>> items, PaymentCallback callback) {
         this.pendingAmount = amount;
         this.pendingTableNumber = tableNumber;
         this.pendingOrderDetails = details;
         this.pendingPaymentItems = items;
-        this.pendingPaymentType = 7; // 7 = Κάρτα / POS
+        this.pendingPaymentType = 7;
         this.pendingCallback = callback;
         this.pendingPosUtid = "";
         this.pendingEpsilonSignature = "";
@@ -93,39 +88,30 @@ public class PaymentManager {
                 Toast.makeText(activity, "Αναμονή έγκρισης POS από Epsilon Digital...", Toast.LENGTH_SHORT).show()
         );
 
-        // Εκκίνηση της κλήσης με ενσωματωμένη κυκλική αυτο-ίαση (auto-retry)
         attemptRequestPayment(originalMark, amount, tableNumber);
     }
 
-    /**
-     * ΑΣΦΑΛΗΣ ΚΛΗΣΗ requestPayment ΜΕ ΕΛΕΓΧΟ 401 ΚΑΙ ΠΛΗΡΗ ΤΡΟΦΟΔΟΣΙΑ ΤΟΥ POS
-     */
+
     private void attemptRequestPayment(long originalMark, double amount, String tableNumber) {
         EpsilonIntegrationHelper.requestPayment(activity, originalMark, amount, "order_" + tableNumber + "_" + System.currentTimeMillis(),
                 new EpsilonIntegrationHelper.CallbackWithResult<JsonObject>() {
                     @Override
                     public void onSuccess(JsonObject response) {
-                        // ΕΛΕΓΧΟΣ: Βεβαιωνόμαστε ότι το paymentToken υπάρχει ως JSON Object
                         if (response.has("paymentToken") && response.get("paymentToken").isJsonObject()) {
                             JsonObject tokenObj = response.getAsJsonObject("paymentToken");
 
-                            // 1. Άντληση του UID από το κεντρικό επίπεδο της απάντησης
                             String uid = response.has("uid") && !response.get("uid").isJsonNull() ?
                                     response.get("uid").getAsString() : "";
 
-                            // 2. Άντληση της ψηφιακής υπογραφής (signature)
                             String signature = tokenObj.has("signature") && !tokenObj.get("signature").isJsonNull() ?
                                     tokenObj.get("signature").getAsString() : "";
 
-                            // 3. Άντληση της χρονοσφραγίδας (timestamp)
                             String timestamp = tokenObj.has("timestamp") && !tokenObj.get("timestamp").isJsonNull() ?
                                     tokenObj.get("timestamp").getAsString() : "";
 
-                            // 4. Υπολογισμός αξιών (πρέπει να συμφωνούν απόλυτα με την requestPayment)
                             double netAmount = amount / 1.13;
                             double vatAmount = amount - netAmount;
 
-                            // 5. Χρησιμοποιούμε επιτέλους την ΠΛΗΡΗ και επίσημη μέθοδο createSaleIntent
                             Intent posIntent = EpayHelper.createSaleIntent(
                                     activity.getPackageName(),
                                     amount,
@@ -134,10 +120,10 @@ public class PaymentManager {
                                     "order_" + tableNumber + "_" + System.currentTimeMillis(),
                                     uid,
                                     signature,
-                                    "epsilon",   // providerId
+                                    "epsilon",
                                     timestamp,
-                                    "card",      // paymentMethod
-                                    "1234567890" // tid (πρέπει να είναι το ίδιο με του requestPayment)
+                                    "card",
+                                    "1234567890"
                             );
 
                             if (posIntent != null) {
@@ -152,7 +138,6 @@ public class PaymentManager {
 
                     @Override
                     public void onError(String message) {
-                        // ΕΞΥΠΝΟ FALLBACK: Αν το Token έληξε (HTTP 401), κάνουμε άμεση ανανέωση
                         if (message.contains("401")) {
                             Log.w("PaymentManager", "Λήξη Token (401) στο requestPayment. Ασφαλής ανανέωση κωδικών POS...");
                             refreshTokenAndRetryPosPayment(originalMark, amount, tableNumber);
@@ -163,9 +148,7 @@ public class PaymentManager {
                 });
     }
 
-    /**
-     * ΑΠΟΚΛΕΙΣΤΙΚΗ ΑΝΑΝΕΩΣΗ TOKEN ΓΙΑ ΤΗ ΡΟΗ ΤΟΥ POS
-     */
+
     private void refreshTokenAndRetryPosPayment(long originalMark, double amount, String tableNumber) {
         String refreshToken = prefs.getString("refreshToken", null);
         String oldJwt = prefs.getString("jwt", null);
@@ -202,9 +185,7 @@ public class PaymentManager {
                 });
     }
 
-    /**
-     * ΠΛΗΡΕΣ LOGIN ΣΕ ΠΕΡΙΠΤΩΣΗ ΑΠΟΤΥΧΙΑΣ ΤΟΥ REFRESH
-     */
+
     private void performFullLoginForPos(long originalMark, double amount, String tableNumber) {
         LoginRequest request = new LoginRequest(
                 "1ADB7B09478F4C58892ADDBB23E0EF65",
@@ -238,19 +219,13 @@ public class PaymentManager {
                 });
     }
 
-    /**
-     * ΔΙΑΧΕΙΡΙΣΗ ΑΠΟΤΕΛΕΣΜΑΤΟΣ ΑΠΟ ΤΟ POS (Καλείται στο onActivityResult του Activity)
-     * Αν η χρέωση πέτυχε, προχωράει στην οριστική διαβίβαση 11.2 μέσω της sendToEpsilonProvider.
-     */
     public void handlePosResult(int resultCode, Intent data) {
         if (pendingCallback == null) return;
 
-        // Έλεγχος αν η συναλλαγή εγκρίθηκε από το SoftPOS
         if (resultCode == android.app.Activity.RESULT_OK && data != null) {
             String configJson = data.getStringExtra("gr.epayworldwide.softpos.CONFIGURATION");
 
             try {
-                // Αποκωδικοποιούμε το JSON που επέστρεψε το SoftPOS
                 JSONObject root = new JSONObject(configJson != null ? configJson : "{}");
                 String signature = root.optString("signature", "");
 
@@ -266,11 +241,9 @@ public class PaymentManager {
                         Toast.makeText(activity, "Η κάρτα εγκρίθηκε! Οριστική έκδοση 11.2...", Toast.LENGTH_SHORT).show()
                 );
 
-                // Αποθηκεύουμε τα στοιχεία POS στα πεδία αναμονής
                 this.pendingPosUtid = transactionId;
                 this.pendingEpsilonSignature = signature;
 
-                // 4. Αξιοποιούμε την έτοιμη και θωρακισμένη μέθοδο αποστολής
                 sendToEpsilonProvider();
 
             } catch (Exception e) {
@@ -281,7 +254,6 @@ public class PaymentManager {
         }
     }
 
-    // Αποστολή στο myDATA
     private void sendToEpsilonProvider() {
         SharedPreferences prefs = activity.getSharedPreferences("my_prefs", Activity.MODE_PRIVATE);
         String jwt = prefs.getString("jwt", null);

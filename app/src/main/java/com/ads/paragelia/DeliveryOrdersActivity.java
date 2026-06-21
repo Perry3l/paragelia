@@ -51,7 +51,6 @@ public class DeliveryOrdersActivity extends BaseActivity {
     private ExecutorService printExecutor;
     private PaymentManager paymentManager;
 
-    // Προσωρινά πεδία για την τρέχουσα πληρωμή
     private double pendingAmount;
     private String pendingOrderNumber;
     private String pendingOrderId;
@@ -70,7 +69,6 @@ public class DeliveryOrdersActivity extends BaseActivity {
         rvOrders.setLayoutManager(new LinearLayoutManager(this));
         deliveryRef = FirebaseHelper.getReference("delivery_orders");
 
-        // Αρχικοποίηση PaymentManager
         SharedPreferences prefs = getSharedPreferences("my_prefs", MODE_PRIVATE);
         if (prefs.getString("jwt", null) == null) {
             performEpsilonLogin();
@@ -138,22 +136,19 @@ public class DeliveryOrdersActivity extends BaseActivity {
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 orderList.clear();
                 for (DataSnapshot orderSnap : snapshot.getChildren()) {
-                    String orderId = orderSnap.getKey();  // π.χ. "DL-4"
+                    String orderId = orderSnap.getKey();
 
-                    // Ψάχνουμε για το πρώτο child που έχει "items"
                     DataSnapshot orderDataSnap = null;
                     if (orderSnap.hasChild("current_order")) {
                         orderDataSnap = orderSnap.child("current_order");
                     } else if (orderSnap.hasChild("items")) {
                         orderDataSnap = orderSnap;
                     } else {
-                        // Υπάρχει τυχαίο κλειδί; σαρώνουμε όλα τα children
                         for (DataSnapshot child : orderSnap.getChildren()) {
                             if (child.hasChild("items")) {
                                 orderDataSnap = child;
                                 break;
                             } else if (child.hasChild("current_order")) {
-                                // Προσθήκη για να διαβάζει και τα παλιά "λάθος" δεδομένα
                                 orderDataSnap = child.child("current_order");
                                 break;
                             }
@@ -197,7 +192,6 @@ public class DeliveryOrdersActivity extends BaseActivity {
         });
     }
 
-    // ---------- Dialog επιλογής πληρωμής ----------
     private void showPaymentMethodDialog(DeliveryOrder order) {
         double total = 0.0;
         if (order.items != null) {
@@ -272,15 +266,13 @@ public class DeliveryOrdersActivity extends BaseActivity {
                 .show();
     }
 
-    // ====================== ΝΕΕΣ ΜΕΘΟΔΟΙ ======================
 
     private void showReceiptDeliveryDialog(String orderNumber, List<Map<String, Object>> items,
                                            Map<String, Object> customer,
                                            String mark, String uid, String authCode, String qrUrl) {
-        // Καθαρίζουμε την παραγγελία από τη βάση (αφού έχει ήδη πληρωθεί)
+
         deliveryRef.child(pendingOrderId).removeValue();
 
-        // Δημιουργία κειμένου απόδειξης
         String receiptText = buildReceiptText(orderNumber, items, mark, uid, authCode, qrUrl);
 
         String phone = (customer != null && customer.get("phone") != null) ? customer.get("phone").toString() : "";
@@ -295,15 +287,14 @@ public class DeliveryOrdersActivity extends BaseActivity {
                 .setTitle("Παράδοση απόδειξης")
                 .setItems(options, (dialog, which) -> {
                     if (which == 0) {
-                        // Εκτύπωση
+
                         printReceiptOnly(orderNumber, items, mark, uid, authCode, qrUrl);
                     } else {
-                        // SMS
+
                         if (!phone.isEmpty()) {
                             sendSmsReceipt(phone, receiptText);
                         }
                     }
-                    // Μετά την ολοκλήρωση (ανεξάρτητα από επιλογή), ρωτάμε για το χαρτί του ντελιβερά
                     showDeliveryPaperDialog(customer);
                 })
                 .show();
@@ -334,22 +325,21 @@ public class DeliveryOrdersActivity extends BaseActivity {
     }
 
     private void sendSmsReceipt(String phoneNumber, String message) {
-        // Έλεγχος αν η συσκευή έχει δυνατότητα SMS
+
         if (android.telephony.SmsManager.getDefault() == null) {
             Toast.makeText(this, "Η συσκευή δεν υποστηρίζει SMS", Toast.LENGTH_LONG).show();
             return;
         }
 
-        // Έλεγχος άδειας
         if (androidx.core.content.ContextCompat.checkSelfPermission(this,
                 android.Manifest.permission.SEND_SMS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            // Αποθήκευση προσωρινά και αίτημα άδειας
+
             pendingSmsPhone = phoneNumber;
             pendingSmsMessage = message;
             androidx.core.app.ActivityCompat.requestPermissions(this,
                     new String[]{android.Manifest.permission.SEND_SMS}, SMS_PERMISSION_CODE);
         } else {
-            // Άδεια ήδη χορηγημένη – απευθείας αποστολή
+
             sendSmsDirectly(phoneNumber, message);
         }
     }
@@ -519,7 +509,6 @@ public class DeliveryOrdersActivity extends BaseActivity {
         }
     }
 
-    // ---------- Εκτύπωση σε δύο χαρτιά ----------
     private void printDeliveryOrder(String orderNumber, List<Map<String, Object>> items,
                                     Map<String, Object> customer,
                                     String mark, String uid, String authCode, String qrUrl) {
@@ -532,7 +521,6 @@ public class DeliveryOrdersActivity extends BaseActivity {
                 return;
             }
 
-            // ---- Πρώτο χαρτί: είδη και στοιχεία παρόχου ----
             PrnStrFormat format = new PrnStrFormat();
             format.setTextSize(25);
             format.setStyle(PrnTextStyle.NORMAL);
@@ -567,7 +555,6 @@ public class DeliveryOrdersActivity extends BaseActivity {
                 }
             }
 
-            // Στοιχεία παρόχου
             if (mark != null && !mark.equals("0")) {
                 format.setAli(Layout.Alignment.ALIGN_CENTER);
                 mPrinter.setPrintAppendString("----------------", format);
@@ -599,13 +586,11 @@ public class DeliveryOrdersActivity extends BaseActivity {
                 return;
             }
 
-            // Κόψιμο μεταξύ των χαρτιών
             if (mPrinter.isSuppoerCutter()) {
                 mPrinter.openPrnCutter((byte) 1);
             }
             try { Thread.sleep(500); } catch (InterruptedException ignored) {}
 
-            // ---- Δεύτερο χαρτί: στοιχεία πελάτη ----
             format.setTextSize(20);
             format.setAli(Layout.Alignment.ALIGN_CENTER);
             mPrinter.setPrintAppendString("ΣΤΟΙΧΕΙΑ ΠΕΛΑΤΗ", format);
@@ -654,7 +639,6 @@ public class DeliveryOrdersActivity extends BaseActivity {
                 .show();
     }
 
-    // ---------- Adapter ----------
     private class DeliveryAdapter extends RecyclerView.Adapter<DeliveryAdapter.ViewHolder> {
         private final List<DeliveryOrder> list;
 
@@ -696,7 +680,6 @@ public class DeliveryOrdersActivity extends BaseActivity {
                 holder.tvCustomerInfo.setText("Χωρίς στοιχεία πελάτη");
             }
 
-            // === ΝΕΟ: Click listener για επεξεργασία ===
             holder.itemView.setOnClickListener(v -> {
                 Intent intent = new Intent(DeliveryOrdersActivity.this, DeliveryOrderEditActivity.class);
                 intent.putExtra(DeliveryOrderEditActivity.EXTRA_ORDER_ID, order.id);

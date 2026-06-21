@@ -55,13 +55,11 @@ public class PrinterAdapter extends RecyclerView.Adapter<PrinterAdapter.ViewHold
         info += " | " + (printer.isAvailable() ? "✅ Online" : "❌ Offline");
         holder.tvInfo.setText(info);
 
-        // Spinner για target
         ArrayAdapter<String> adapter = new ArrayAdapter<>(holder.spTarget.getContext(),
                 android.R.layout.simple_spinner_item, TARGETS);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         holder.spTarget.setAdapter(adapter);
 
-        // Ορισμός τρέχοντος target χωρίς να πυροδοτηθεί ο listener
         holder.spTarget.setOnItemSelectedListener(null);
         int index = TARGETS.indexOf(printer.getTarget());
         if (index >= 0) holder.spTarget.setSelection(index);
@@ -77,7 +75,6 @@ public class PrinterAdapter extends RecyclerView.Adapter<PrinterAdapter.ViewHold
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
 
-        // Κουμπί αφαίρεσης (εμφανίζεται μόνο για USB/IP)
         boolean removable = printer instanceof UsbPrinter || printer instanceof NetworkPrinter;
         holder.btnRemove.setVisibility(removable ? View.VISIBLE : View.GONE);
         holder.btnRemove.setOnClickListener(v -> listener.onRemovePrinter(printer));

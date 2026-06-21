@@ -1,7 +1,5 @@
 package com.ads.paragelia;
 
-import android.content.Context;
-import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -31,7 +29,6 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
         this.orderOnlyMode = enabled;
     }
 
-    // ---------- Διεπαφή ----------
     public interface OnTableInteractionListener {
         void onTableClicked(TableCardData data);
         void onCancelClicked(TableCardData data);
@@ -71,7 +68,6 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
         return differ.getCurrentList().size();
     }
 
-    // ---------- Data class ----------
     public static class TableCardData {
         public String tableNumber;
         public String details;
@@ -91,7 +87,6 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
         }
     }
 
-    // ---------- ViewHolder ----------
     static class TableViewHolder extends RecyclerView.ViewHolder {
         MaterialCardView cardView;
         TextView tvTableInfo;
@@ -114,7 +109,6 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
             String text = title + "\n\n" + data.details;
             tvTableInfo.setText(text);
 
-            // Χρώμα ανά κατάσταση
             if (data.isEmpty) {
                 cardView.setCardBackgroundColor(Color.LTGRAY);
             } else if ("ordered".equals(data.status)) {
@@ -123,18 +117,15 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
                 cardView.setCardBackgroundColor(Color.WHITE);
             }
 
-            // Απλό κλικ
             cardView.setOnClickListener(v -> {
                 if (listener != null) listener.onTableClicked(data);
             });
 
-            // Παρατεταμένο πάτημα
             cardView.setOnLongClickListener(v -> {
                 if (listener != null) listener.onTableLongClicked(data);
                 return true;
             });
 
-            // Δημιουργία κουμπιών μόνο αν ΔΕΝ είναι άδειο
             buttonsContainer.removeAllViews();
             if (!data.isEmpty) {
                 if ("ordered".equals(data.status)) {
@@ -147,7 +138,7 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
 
         private void addNormalButtons(LinearLayout parent, TableCardData data,
                                       OnTableInteractionListener listener) {
-            // ... (ίδιος κώδικας με πριν, δεν τον αλλάζουμε)
+
             LinearLayout row1 = new LinearLayout(parent.getContext());
             row1.setOrientation(LinearLayout.HORIZONTAL);
 
@@ -205,7 +196,6 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
         private void addOrderedButtons(LinearLayout parent, TableCardData data,
                                        OnTableInteractionListener listener, boolean orderOnlyMode) {
             if (orderOnlyMode) {
-                // Στη λειτουργία μόνο παραγγελιών: εμφάνιση συνολικού ποσού αντί για κουμπί αναφοράς
                 double total = calculateTotalAmount(data.tableData);
                 Button btnTotal = new Button(parent.getContext());
                 btnTotal.setText(String.format("ΣΥΝΟΛΟ: €%.2f", total));
@@ -218,7 +208,6 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
                 btnTotal.setLayoutParams(params);
                 parent.addView(btnTotal);
             } else {
-                // Κανονική λειτουργία: κουμπί εκτύπωσης αναφοράς
                 Button btnPrintTemp = new Button(parent.getContext());
                 btnPrintTemp.setText("ΑΝΑΦΟΡΑ ΤΡΑΠΕΖΙΟΥ");
                 btnPrintTemp.setBackgroundColor(Color.parseColor("#2196F3"));
@@ -233,7 +222,6 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
                 parent.addView(btnPrintTemp);
             }
 
-            // Τα υπόλοιπα κουμπιά (ΑΚΥΡΩΣΗ, ΜΕΤΑΚΙΝΗΣΗ) εμφανίζονται πάντα
             LinearLayout row = new LinearLayout(parent.getContext());
             row.setOrientation(LinearLayout.HORIZONTAL);
             LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
@@ -268,12 +256,10 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
             parent.addView(row);
         }
 
-        // Βοηθητική μέθοδος υπολογισμού συνολικού ποσού από τα tableData
         private double calculateTotalAmount(Map<String, Object> tableData) {
             double total = 0.0;
             if (tableData == null) return total;
 
-            // 1. Από push-keys (παλιά δομή)
             for (Map.Entry<String, Object> entry : tableData.entrySet()) {
                 if (entry.getKey().equals("last_fiscal_info") ||
                         entry.getKey().equals("epsilon_marks") ||
@@ -291,7 +277,6 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
                 }
             }
 
-            // 2. Από current_order (συγχωνεύσεις, order‑only mode)
             if (tableData.containsKey("current_order")) {
                 Object curObj = tableData.get("current_order");
                 if (curObj instanceof Map) {
@@ -311,7 +296,6 @@ public class ActiveTableAdapter extends RecyclerView.Adapter<ActiveTableAdapter.
         }
     }
 
-    // ---------- DiffUtil ----------
     private static final DiffUtil.ItemCallback<TableCardData> DIFF_CALLBACK =
             new DiffUtil.ItemCallback<TableCardData>() {
                 @Override

@@ -8,6 +8,6 @@ public interface PrinterDevice {
     void print(String text);
     void cutPaper();
     void setTarget(String target);
-    void setImageMode(boolean enabled);   // ΝΕΟ
-    boolean isImageMode();                // ΝΕΟ
+    void setImageMode(boolean enabled);
+    boolean isImageMode();
 }

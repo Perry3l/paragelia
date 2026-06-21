@@ -111,7 +111,7 @@ public class ActiveTablesActivity extends BaseActivity {
         tvEmpty = findViewById(R.id.tvEmpty);
         progressBar = findViewById(R.id.progressBar);
         tablesRecyclerView.setLayoutManager(new LinearLayoutManager(this));
-// Σωστή σειρά:
+
         adapter = new ActiveTableAdapter();
         SharedPreferences orderPrefs = getSharedPreferences(SettingsActivity.PREFS_ORDER_MODE, MODE_PRIVATE);
         boolean orderOnlyMode = orderPrefs.getBoolean(SettingsActivity.KEY_ORDER_ONLY_MODE, false);
@@ -230,9 +230,8 @@ public class ActiveTablesActivity extends BaseActivity {
             }
 
             private void issue86ForOrangeTable(ActiveTableAdapter.TableCardData data) {
-                // Use original items with VAT for printing
+
                 List<Map<String, Object>> originalItems = extractAllItemsWithVat(data.tableData);
-                // For Epsilon API, we can use the same list (VAT doesn't matter for order slip)
                 List<Map<String, Object>> itemsForEpsilon = extractAllItems(data.tableData);
 
                 if (itemsForEpsilon.isEmpty()) {
@@ -250,7 +249,6 @@ public class ActiveTablesActivity extends BaseActivity {
                                 String qr = result.getQrCode() != null ? result.getQrCode() : "";
                                 String auth = result.getAuthenticationCode() != null ? result.getAuthenticationCode() : "";
 
-                                // Δημιουργία της ώρας μία φορά
                                 String fiscalTime = new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date());
 
                                 DatabaseReference tableRef = billsRef.child(data.tableNumber);
@@ -276,7 +274,6 @@ public class ActiveTablesActivity extends BaseActivity {
                                 statusUpdate.put("status", "printed");
                                 tableRef.child("current_order").updateChildren(statusUpdate);
 
-                                // Send receipt to printer with VAT info (χρησιμοποιείται η fiscalTime)
                                 send86ReceiptToPrinter(data.tableNumber, originalItems, mark, uid, auth, qr, fiscalTime);
 
                                 Toast.makeText(ActiveTablesActivity.this, "Επιτυχής έκδοση 8.6! MARK: " + mark, Toast.LENGTH_LONG).show();
@@ -293,7 +290,6 @@ public class ActiveTablesActivity extends BaseActivity {
                 List<Map<String, Object>> allItems = new ArrayList<>();
                 if (tableData == null) return allItems;
 
-                // 1. From push-keys (normal tables)
                 for (Map.Entry<String, Object> entry : tableData.entrySet()) {
                     if (entry.getKey().equals("last_fiscal_info") ||
                             entry.getKey().equals("epsilon_marks") ||
@@ -306,7 +302,6 @@ public class ActiveTablesActivity extends BaseActivity {
                     }
                 }
 
-                // 2. From current_order (TakeAway/Delivery)
                 if (allItems.isEmpty() && tableData.containsKey("current_order")) {
                     Object curObj = tableData.get("current_order");
                     if (curObj instanceof Map) {
@@ -318,7 +313,7 @@ public class ActiveTablesActivity extends BaseActivity {
                     }
                 }
 
-                return allItems; // without grouping, so VAT is preserved per line
+                return allItems;
             }
 
             private void send86ReceiptToPrinter(String tableNumber, List<Map<String, Object>> items,
@@ -326,7 +321,7 @@ public class ActiveTablesActivity extends BaseActivity {
                 Map<String, Object> receiptData = new HashMap<>();
                 receiptData.put("tableNumber", tableNumber);
                 receiptData.put("items", items);
-                receiptData.put("timestamp", System.currentTimeMillis()); // optional fallback
+                receiptData.put("timestamp", System.currentTimeMillis());
                 receiptData.put("type", "order_slip_86");
                 receiptData.put("target", "RECEIPT");
                 receiptData.put("epsilon_mark", String.valueOf(mark));
@@ -334,7 +329,7 @@ public class ActiveTablesActivity extends BaseActivity {
                 receiptData.put("epsilon_auth", auth);
                 receiptData.put("epsilon_qr", qrUrl);
                 receiptData.put("totalAmount", calculateTotalAmountFromItems(items));
-                receiptData.put("fiscal_time", fiscalTime);   // ← νέο πεδίο
+                receiptData.put("fiscal_time", fiscalTime);
 
                 DatabaseReference receiptsRef = FirebaseHelper.getReference("receipts");
                 receiptsRef.child(tableNumber + "_86_" + System.currentTimeMillis()).setValue(receiptData);
@@ -353,7 +348,6 @@ public class ActiveTablesActivity extends BaseActivity {
             @Override
             public void onCancelClicked(ActiveTableAdapter.TableCardData data) {
                 if (orderOnlyMode) {
-                    // Simple local clear without any Epsilon call
                     clearTableAndMergedSource(data.tableNumber, () ->
                             Toast.makeText(ActiveTablesActivity.this,
                                     "Το τραπέζι " + data.tableNumber + " άδειασε (λειτουργία μόνο παραγγελιών)",
@@ -361,7 +355,6 @@ public class ActiveTablesActivity extends BaseActivity {
                     );
                     return;
                 }
-                // Normal mode logic
                 if ("ordered".equals(data.status)) {
                     clearTableAndMergedSource(data.tableNumber, () ->
                             Toast.makeText(ActiveTablesActivity.this,
@@ -531,7 +524,6 @@ public class ActiveTablesActivity extends BaseActivity {
 
             @Override
             public void onMoveClicked(ActiveTableAdapter.TableCardData data) {
-                // (Δεν υπάρχει πλέον έλεγχος orderOnlyMode)
                 if (isMergeMode) {
                     Toast.makeText(ActiveTablesActivity.this, "Βγείτε πρώτα από την κατάσταση συγχώνευσης", Toast.LENGTH_SHORT).show();
                     return;
@@ -560,10 +552,8 @@ public class ActiveTablesActivity extends BaseActivity {
                 }
 
                 if ("ordered".equals(data.status)) {
-                    // Instead of printing a local temporary receipt, issue an official 8.6 Order Slip
                     issue86ForOrangeTable(data);
                 } else {
-                    // For tables already printed, just reprint the last fiscal receipt
                     performPrintTempReceipt(data);
                 }
             }
@@ -674,7 +664,6 @@ public class ActiveTablesActivity extends BaseActivity {
         List<Map<String, Object>> allItems = new ArrayList<>();
         if (tableData == null) return allItems;
 
-        // 1. Από push‑keys (παλιά δομή)
         for (Map.Entry<String, Object> entry : tableData.entrySet()) {
             if (entry.getKey().equals("last_fiscal_info") || entry.getKey().equals("epsilon_marks") || entry.getKey().equals("current_order"))
                 continue;
@@ -686,7 +675,6 @@ public class ActiveTablesActivity extends BaseActivity {
             }
         }
 
-        // 2. Από current_order (συγχωνεύσεις, order‑only, takeaway/delivery)
         if (tableData.containsKey("current_order")) {
             Object curObj = tableData.get("current_order");
             if (curObj instanceof Map) {
@@ -698,7 +686,6 @@ public class ActiveTablesActivity extends BaseActivity {
             }
         }
 
-        // Ομαδοποίηση (ίδιος κώδικας που υπήρχε)
         Map<String, Map<String, Object>> grouped = new LinkedHashMap<>();
         for (Map<String, Object> item : allItems) {
             String name = (String) item.get("name");
@@ -849,13 +836,10 @@ public class ActiveTablesActivity extends BaseActivity {
     private void clearTableAndMergedSource(String tableNumber, Runnable onSuccess) {
         DatabaseReference tableRef = billsRef.child(tableNumber);
 
-        // 1. Ανάγνωση των δεδομένων του τραπεζιού (μία φορά)
         tableRef.get().addOnSuccessListener(snapshot -> {
             Map<String, Object> updates = new HashMap<>();
-            // Πάντα διαγράφουμε το ίδιο το τραπέζι
             updates.put("/" + tableNumber, null);
 
-            // 2. Αν το τραπέζι έχει merged_from, το προσθέτουμε στη μαζική διαγραφή
             Map<String, Object> data = (Map<String, Object>) snapshot.getValue();
             if (data != null && data.containsKey("current_order")) {
                 Map<String, Object> cur = (Map<String, Object>) data.get("current_order");
@@ -865,13 +849,11 @@ public class ActiveTablesActivity extends BaseActivity {
                 }
             }
 
-            // 3. Αναζήτηση τραπεζιών που έχουν merged_to = tableNumber (παλιός τρόπος συγχώνευσης)
             billsRef.orderByChild("merged_to").equalTo(tableNumber).get()
                     .addOnSuccessListener(sourceSnap -> {
                         for (DataSnapshot snap : sourceSnap.getChildren()) {
                             updates.put("/" + snap.getKey(), null);
                         }
-                        // 4. Εκτελούμε ΟΛΕΣ τις διαγραφές ΑΤΟΜΙΚΑ
                         billsRef.getRef().updateChildren(updates)
                                 .addOnSuccessListener(aVoid -> {
                                     if (onSuccess != null) onSuccess.run();
@@ -883,14 +865,12 @@ public class ActiveTablesActivity extends BaseActivity {
                     })
                     .addOnFailureListener(e -> {
                         Log.e(TAG, "Failed to query merged_to", e);
-                        // Έστω και με σφάλμα, διαγράφουμε τουλάχιστον το τραπέζι
                         billsRef.getRef().updateChildren(updates)
                                 .addOnSuccessListener(aVoid -> { if (onSuccess != null) onSuccess.run(); })
                                 .addOnFailureListener(err -> { if (onSuccess != null) onSuccess.run(); });
                     });
 
         }).addOnFailureListener(e -> {
-            // Αν αποτύχει ακόμα και η ανάγνωση, διαγράφουμε μόνο το τραπέζι
             Log.e(TAG, "Failed to read table data", e);
             Map<String, Object> fallbackUpdates = new HashMap<>();
             fallbackUpdates.put("/" + tableNumber, null);
@@ -904,7 +884,6 @@ public class ActiveTablesActivity extends BaseActivity {
         StringBuilder sb = new StringBuilder();
         if (tableSnapshot == null) return "Καμία παραγγελία";
 
-        // 1. Διάβασε από current_order (προτεραιότητα)
         if (tableSnapshot.hasChild("current_order")) {
             DataSnapshot currentOrderSnap = tableSnapshot.child("current_order");
             Map<String, Object> currentOrder = (Map<String, Object>) currentOrderSnap.getValue();
@@ -922,7 +901,6 @@ public class ActiveTablesActivity extends BaseActivity {
             }
         }
 
-        // 2. Αλλιώς διάβασε από τα παλιά push-keys (τυχαία κλειδιά)
         for (DataSnapshot orderSnapshot : tableSnapshot.getChildren()) {
             String key = orderSnapshot.getKey();
             if (key != null && (key.equals("last_fiscal_info") || key.equals("epsilon_marks") || key.equals("current_order"))) {
@@ -1027,7 +1005,6 @@ public class ActiveTablesActivity extends BaseActivity {
 
     private void processNextSplitPartWithRemoval(int partIndex) {
         if (partIndex >= pendingSplitPartsItems.size()) {
-            // Όλα τα μέρη εξοφλήθηκαν – καθαρισμός τραπεζιού
             clearTableAndMergedSource(pendingTableNumber, () ->
                     Toast.makeText(this, "Ο λογαριασμός εξοφλήθηκε πλήρως!", Toast.LENGTH_SHORT).show()
             );
@@ -1037,16 +1014,13 @@ public class ActiveTablesActivity extends BaseActivity {
         List<Map<String, Object>> partItems = pendingSplitPartsItems.get(partIndex);
         double partAmount = splitAmounts.get(partIndex);
 
-        // Αποθήκευση των items που θα πληρωθούν
         pendingPaymentItems = partItems;
         pendingAmount = partAmount;
         pendingOrderDetails = "Μέρος " + (partIndex + 1) + " τραπεζιού " + pendingTableNumber;
 
-        // Callback μετά την επιτυχή πληρωμή
         PaymentCompleteCallback afterPayment = () -> {
-            // Αφαίρεση των πληρωμένων ειδών από το τραπέζι
             removeItemsFromTable(pendingTableNumber, convertToOrderItems(partItems), () -> {
-                // Αναδρομική κλήση για το επόμενο μέρος
+
                 processNextSplitPartWithRemoval(partIndex + 1);
             });
         };
@@ -1054,7 +1028,6 @@ public class ActiveTablesActivity extends BaseActivity {
         showPaymentMethodDialog("Μέρος " + (partIndex + 1) + " (€" + String.format("%.2f", partAmount) + ")", afterPayment);
     }
 
-    // Βοηθητική μετατροπή Map → OrderItem (για removeItemsFromTable)
     private List<SplitItemsActivity.OrderItem> convertToOrderItems(List<Map<String, Object>> items) {
         List<SplitItemsActivity.OrderItem> list = new ArrayList<>();
         for (Map<String, Object> map : items) {
@@ -1072,7 +1045,7 @@ public class ActiveTablesActivity extends BaseActivity {
         double total = 0.0;
         if (tableData == null) return total;
 
-        // 1. Από push‑keys
+
         for (Map.Entry<String, Object> entry : tableData.entrySet()) {
             if (entry.getKey().equals("last_fiscal_info") || entry.getKey().equals("epsilon_marks") || entry.getKey().equals("current_order"))
                 continue;
@@ -1089,7 +1062,6 @@ public class ActiveTablesActivity extends BaseActivity {
             }
         }
 
-        // 2. Από current_order
         if (tableData.containsKey("current_order")) {
             Object curObj = tableData.get("current_order");
             if (curObj instanceof Map) {
@@ -1213,7 +1185,6 @@ public class ActiveTablesActivity extends BaseActivity {
             List<List<ProductSelectionBottomSheet.OrderItem>> parts = new Gson().fromJson(partsJson, listType);
             if (parts == null || parts.isEmpty()) return;
 
-            // Αποθήκευση όλων των μερών (για αναδρομική επεξεργασία)
             pendingSplitPartsItems = new ArrayList<>();
             splitAmounts.clear();
             for (List<ProductSelectionBottomSheet.OrderItem> part : parts) {
@@ -1232,7 +1203,6 @@ public class ActiveTablesActivity extends BaseActivity {
                 splitAmounts.add(partTotal);
                 pendingSplitPartsItems.add(partItems);
             }
-            // Ξεκινάμε την επεξεργασία του πρώτου μέρους
             processNextSplitPartWithRemoval(0);
         } else if (requestCode == REQUEST_SPLIT_ITEMS_PARTIAL && resultCode == RESULT_OK) {
             String partsJson = data.getStringExtra("split_parts");
@@ -1246,14 +1216,13 @@ public class ActiveTablesActivity extends BaseActivity {
                 partTotal += item.price * item.quantity;
             }
             final double finalPartTotal = partTotal;
-            final List<SplitItemsActivity.OrderItem> finalSelectedItems = selectedItems; // για χρήση στα lambdas
+            final List<SplitItemsActivity.OrderItem> finalSelectedItems = selectedItems;
 
-            // ✅ ΝΕΟΣ ΔΙΑΛΟΓΟΣ: επιλογή τρόπου πληρωμής για τη μερική εξόφληση
             new AlertDialog.Builder(this)
                     .setTitle("Μερική Εξόφληση - €" + String.format("%.2f", finalPartTotal))
                     .setMessage("Επιλέξτε τρόπο πληρωμής")
                     .setPositiveButton("💵 Μετρητά (χωρίς απόδειξη τώρα)", (dialog, which) -> {
-                        // Αφαίρεση items και καταγραφή χωρίς φορολογικό παραστατικό
+
                         removeItemsFromTable(pendingTableNumber, finalSelectedItems, () -> {
                             saveToHistory(HistoryEntry.TYPE_PARTIAL_PAYMENT, pendingTableNumber, finalPartTotal,
                                     "cash", "Μερική εξόφληση με μετρητά (χωρίς απόδειξη)");
@@ -1264,7 +1233,7 @@ public class ActiveTablesActivity extends BaseActivity {
                         });
                     })
                     .setNegativeButton("💳 Κάρτα (με απόδειξη τώρα)", (dialog, which) -> {
-                        // Κανονική ροή πληρωμής με κάρτα (εκδίδει απόδειξη)
+
                         pendingAmount = finalPartTotal;
                         pendingPaymentItems = new ArrayList<>();
                         for (SplitItemsActivity.OrderItem item : finalSelectedItems) {
@@ -1355,8 +1324,6 @@ public class ActiveTablesActivity extends BaseActivity {
                         receiptData.put("items", pendingPaymentItems);
                         receiptData.put("timestamp", System.currentTimeMillis());
 
-                        // ΑΛΛΑΓΗ ΕΔΩ: Τολλάζουμε από "payment" σε "receipt" για να το διαβάσει
-                        // το πρόγραμμα του εκτυπωτή ως αναλυτική απόδειξη.
                         receiptData.put("type", "temporary");
 
                         receiptData.put("target", "RECEIPT");
@@ -1459,7 +1426,6 @@ public class ActiveTablesActivity extends BaseActivity {
         receiptData.put("timestamp", System.currentTimeMillis());
         receiptData.put("type", "temporary");
 
-        // --- ΠΡΟΣΘΗΚΗ ΦΟΡΟΛΟΓΙΚΩΝ ΣΤΟΙΧΕΙΩΝ ΣΤΗΝ ΠΡΟΣΩΡΙΝΗ ΑΠΟΔΕΙΞΗ ---
         if (tableData.containsKey("last_fiscal_info")) {
             Map<String, Object> fiscal = (Map<String, Object>) tableData.get("last_fiscal_info");
             if (fiscal != null) {
@@ -1479,11 +1445,10 @@ public class ActiveTablesActivity extends BaseActivity {
         new AlertDialog.Builder(this)
                 .setTitle(title)
                 .setItems(options, (dialog, which) -> {
-                    // Αποθηκεύουμε το callback για να τρέξει ΜΕΤΑ την επιλογή (Εκτύπωση/SMS)
                     pendingPaymentCallback = callback;
 
                     if (which == 0) {
-                        pendingPaymentType = 1; // 1 = Κάρτα
+                        pendingPaymentType = 1;
                         paymentManager.startPosPayment(pendingAmount, pendingTableNumber,
                                 pendingOrderDetails, pendingPaymentItems, new PaymentManager.PaymentCallback() {
                                     @Override
@@ -1496,7 +1461,7 @@ public class ActiveTablesActivity extends BaseActivity {
                                     }
                                 });
                     } else {
-                        pendingPaymentType = 3; // 3 = Μετρητά
+                        pendingPaymentType = 3;
                         paymentManager.startCashPayment(pendingAmount, pendingTableNumber,
                                 pendingOrderDetails, pendingPaymentItems, new PaymentManager.PaymentCallback() {
                                     @Override

@@ -75,13 +75,11 @@ public class NewOrderActivity extends BaseActivity {
         activeBillsRef = FirebaseHelper.getReference("active_bills");
         billsRef = activeBillsRef;
 
-        // Αρχικοποίηση τραπεζιών 1-10
         for (int i = 1; i <= settingsManager.getMaxTables(); i++) {
             tableList.add(new TableData(String.valueOf(i)));
         }
         tableAdapter.notifyDataSetChanged();
 
-        // Live listener
         activeBillsRef.addValueEventListener(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
@@ -106,7 +104,6 @@ public class NewOrderActivity extends BaseActivity {
                             continue;
                         }
 
-                        // Σάρωση όλων των παιδιών για items
                         boolean foundItems = false;
                         double total = 0.0;
                         StringBuilder itemsText = new StringBuilder();
@@ -142,7 +139,6 @@ public class NewOrderActivity extends BaseActivity {
                             data.totalAmount = total;
                         }
 
-                        // Διάβασε status αν υπάρχει current_order
                         if (tableData != null && tableData.containsKey("current_order")) {
                             Map<String, Object> cur = (Map<String, Object>) tableData.get("current_order");
                             if (cur != null && cur.containsKey("status")) {
@@ -245,9 +241,7 @@ public class NewOrderActivity extends BaseActivity {
                 holder.tvOrderSummary.setText("Συγχωνεύτηκε με " + data.mergedTo);
                 holder.cardView.setCardBackgroundColor(Color.LTGRAY);
                 holder.btnAddExtra.setVisibility(View.GONE);
-                // Αφαιρούμε το null click listener, ώστε να ανοίγει το τραπέζι‑προορισμός
                 holder.cardView.setOnClickListener(v -> {
-                    // Βρίσκουμε το τραπέζι προορισμού (mergedTo) και ανοίγουμε bottom sheet γι' αυτό
                     String destTable = data.mergedTo;
                     ProductSelectionBottomSheet bottomSheet = ProductSelectionBottomSheet.newInstance(destTable);
                     bottomSheet.show(getSupportFragmentManager(), "product_sheet");
@@ -261,21 +255,18 @@ public class NewOrderActivity extends BaseActivity {
             holder.btnAddExtra.setVisibility(View.VISIBLE);
             holder.cardView.setAlpha(1.0f);
 
-            // Set card background color based on status
             if (data.tableNumber.equals(sourceTable) && isMergeMode) {
-                holder.cardView.setCardBackgroundColor(0xFFFFD54F); // yellow for source selection
+                holder.cardView.setCardBackgroundColor(0xFFFFD54F);
             } else if (data.hasOrder) {
-                // Check status: "ordered" -> orange, "printed" -> light green/white, others -> light green
                 if ("ordered".equals(data.status)) {
-                    holder.cardView.setCardBackgroundColor(0xFFFFB74D); // orange
+                    holder.cardView.setCardBackgroundColor(0xFFFFB74D);
                 } else {
-                    holder.cardView.setCardBackgroundColor(0xFFE8F5E9); // light green (printed or pending)
+                    holder.cardView.setCardBackgroundColor(0xFFE8F5E9);
                 }
             } else {
-                holder.cardView.setCardBackgroundColor(0xFFFFFFFF); // white for empty
+                holder.cardView.setCardBackgroundColor(0xFFFFFFFF);
             }
 
-            // Click listener
             holder.cardView.setOnClickListener(v -> {
                 TableData selectedData = tableList.get(holder.getAdapterPosition());
 
@@ -313,7 +304,6 @@ public class NewOrderActivity extends BaseActivity {
                         performMerge(sourceTable, selectedData.tableNumber);
                     }
                 } else {
-                    // Normal mode: open bottom sheet
                     if (selectedData.isMerged()) {
                         Toast.makeText(v.getContext(), "Το τραπέζι έχει συγχωνευτεί", Toast.LENGTH_SHORT).show();
                         return;
@@ -323,7 +313,6 @@ public class NewOrderActivity extends BaseActivity {
                 }
             });
 
-            // Add button
             holder.btnAddExtra.setOnClickListener(v -> {
                 if (isMergeMode || isUnmergeMode) {
                     Toast.makeText(v.getContext(), "Δεν μπορείτε να προσθέσετε προϊόντα αυτή τη στιγμή", Toast.LENGTH_SHORT).show();
@@ -354,7 +343,6 @@ public class NewOrderActivity extends BaseActivity {
         }
     }
 
-    // ---------- Helper methods (unchanged from original) ----------
     private void unmergeTable(String tableNumber) {
         DatabaseReference tableRef = billsRef.child(tableNumber);
         tableRef.child("current_order").addListenerForSingleValueEvent(new ValueEventListener() {

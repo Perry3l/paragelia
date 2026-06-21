@@ -43,9 +43,6 @@ public class MainActivity extends BaseActivity {
         new AppUpdateManager(this).checkForUpdates();
         showMemoryOverlay();
 
-        // ------------------------------------------------------------
-        // 1. Έλεγχος αν ο κωδικός καταστήματος έχει ρυθμιστεί
-        // ------------------------------------------------------------
         String storeCode = StoreConfig.getStoreCode(this);
         if (storeCode == null || storeCode.isEmpty()) {
             // Ο χρήστης δεν έχει εισάγει κωδικό καταστήματος
@@ -54,15 +51,11 @@ public class MainActivity extends BaseActivity {
             finish();
             return;
         }
-
-        // ------------------------------------------------------------
-        // 2. Έλεγχος ρόλου συσκευής
-        // ------------------------------------------------------------
         SharedPreferences prefs = getSharedPreferences(SetupActivity.PREFS_NAME, MODE_PRIVATE);
         String role = prefs.getString(SetupActivity.KEY_DEVICE_ROLE, null);
 
         if (role == null) {
-            // Δεν έχει επιλεγεί ρόλος → SetupActivity
+
             Intent intent = new Intent(this, SetupActivity.class);
             startActivity(intent);
             finish();
@@ -70,38 +63,27 @@ public class MainActivity extends BaseActivity {
         }
 
         if (role.equals(SetupActivity.ROLE_PRINTER)) {
-            // Ο εκτυπωτής έχει τη δική του αρχική οθόνη
+
             Intent intent = new Intent(this, PrinterActivity.class);
             startActivity(intent);
             finish();
             return;
         }
-// ------------------------------------------------------------
-// Order-Only Mode: hide only payment-related cards
-// ------------------------------------------------------------
         SharedPreferences orderPrefs = getSharedPreferences(SettingsActivity.PREFS_ORDER_MODE, MODE_PRIVATE);
         boolean orderOnlyMode = orderPrefs.getBoolean(SettingsActivity.KEY_ORDER_ONLY_MODE, false);
 
         if (orderOnlyMode) {
-            // Keep cardTables and cardReports visible
             CardView cardHistory = findViewById(R.id.cardHistory);
             CardView cardTakeAway = findViewById(R.id.cardTakeAway);
             cardHistory.setVisibility(View.GONE);
             cardTakeAway.setVisibility(View.GONE);
         }
 
-        // ------------------------------------------------------------
-        // 3. Μόνο για ρόλο CLIENT από εδώ και κάτω
-        // ------------------------------------------------------------
         if (role.equals(SetupActivity.ROLE_CLIENT)) {
             performEpsilonLogin();
-            // Προφόρτωση μενού (απαιτεί Firebase, άρα και storeCode)
             MenuRepository.getInstance().loadMenu(this, null);
         }
 
-        // ------------------------------------------------------------
-        // 4. Τα υπόλοιπα views & listeners
-        // ------------------------------------------------------------
         CardView cardNewOrder = findViewById(R.id.cardNewOrder);
         CardView cardTables = findViewById(R.id.cardTables);
         CardView cardHistory = findViewById(R.id.cardHistory);
@@ -133,17 +115,15 @@ public class MainActivity extends BaseActivity {
                 startActivity(intent);
             });
 
-            // --- TEST BUTTON: Περνάμε τα δεδομένα με τη ΣΩΣΤΗ δομή πλέον ---
+
             cardTakeAway.setOnLongClickListener(v -> {
                 List<Map<String, Object>> mockItemsList = new ArrayList<>();
 
-                // Προϊόν 1
                 Map<String, Object> item1 = new HashMap<>();
                 item1.put("name", "Πίτα Γύρο Χοιρινό");
                 item1.put("quantity", 2);
                 item1.put("comment", "Χωρίς κρεμμύδι");
 
-                // Προϊόν 2
                 Map<String, Object> item2 = new HashMap<>();
                 item2.put("name", "Coca Cola 330ml");
                 item2.put("quantity", 1);
@@ -164,12 +144,11 @@ public class MainActivity extends BaseActivity {
         } else {
             cardTakeAway.setVisibility(View.GONE);
         }
-        // Έλεγχος για Delivery
+
         boolean deliveryEnabled = prefsa.getBoolean(SettingsActivity.KEY_DELIVERY_ENABLED, true);
         CardView cardDelivery = findViewById(R.id.cardDelivery); // χρησιμοποιήστε το σωστό ID
         if (deliveryEnabled) {
             cardDelivery.setVisibility(View.VISIBLE);
-            // Αν υπάρχει listener, τοποθετήστε τον εδώ (π.χ. cardDelivery.setOnClickListener(...))
         } else {
             cardDelivery.setVisibility(View.GONE);
         }
@@ -192,7 +171,6 @@ public class MainActivity extends BaseActivity {
 
     }
 
-    // --- ΕΝΗΜΕΡΩΜΕΝΗ ΜΕΘΟΔΟΣ ΓΙΑ ONLINE ΠΑΡΑΓΓΕΛΙΕΣ ---
     private void showNewEfoodOrderDialog(String orderId, String customerName, List<Map<String, Object>> itemsList, double totalAmount) {
 
         try {
@@ -206,11 +184,10 @@ public class MainActivity extends BaseActivity {
         AlertDialog.Builder builder = new AlertDialog.Builder(this);
         builder.setTitle("ΝΕΑ ΠΑΡΑΓΓΕΛΙΑ ONLINE!");
 
-        // Δημιουργούμε το κείμενο για να το δει ο χρήστης στο Pop-up διαβάζοντας τη λίστα
         StringBuilder itemsDisplay = new StringBuilder();
         for (Map<String, Object> item : itemsList) {
             String name = (String) item.get("name");
-            int qty = (int) item.get("quantity"); // Διαβάζει το quantity όπως στο NewOrderActivity
+            int qty = (int) item.get("quantity");
             itemsDisplay.append(qty).append("x ").append(name).append("\n");
         }
 
@@ -221,17 +198,14 @@ public class MainActivity extends BaseActivity {
         builder.setMessage(message);
         builder.setCancelable(false);
 
-        // Κουμπί ΑΠΟΔΟΧΗΣ
         builder.setPositiveButton("ΑΠΟΔΟΧΗ", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
                 Map<String, Object> orderData = new HashMap<>();
 
-                // Σώζουμε το όνομα του πελάτη ως "τραπέζι" για να εκτυπωθεί στην κορυφή της απόδειξης
                 orderData.put("tableNumber", "ONLINE (" + customerName + ")");
                 orderData.put("timestamp", System.currentTimeMillis());
 
-                // Περνάμε ΑΥΤΟΥΣΙΑ τη λίστα των αντικειμένων ακριβώς όπως τα δημιουργεί το NewOrderActivity
                 orderData.put("items", itemsList);
 
                 DatabaseReference ordersRef = FirebaseHelper.getReference("orders");
@@ -246,7 +220,6 @@ public class MainActivity extends BaseActivity {
             }
         });
 
-        // Κουμπί ΑΠΟΡΡΙΨΗΣ
         builder.setNegativeButton("ΑΠΟΡΡΙΨΗ", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {

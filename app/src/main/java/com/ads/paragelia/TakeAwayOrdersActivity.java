@@ -51,7 +51,6 @@ public class TakeAwayOrdersActivity extends BaseActivity {
     private Sys mSys;
     private Printer mPrinter;
 
-    // Πληρωμή
     private double pendingAmount = 0.0;
     private String pendingOrderNumber = "";
     private String pendingOrderId = "";
@@ -71,7 +70,6 @@ public class TakeAwayOrdersActivity extends BaseActivity {
         printerManager = PrinterManager.getInstance(this);
         printerManager.loadPrintersConfig();
 
-        // Έλεγχος ύπαρξης JWT token
         SharedPreferences prefs = getSharedPreferences("my_prefs", MODE_PRIVATE);
         String jwt = prefs.getString("jwt", null);
         if (jwt == null) {
@@ -177,7 +175,7 @@ public class TakeAwayOrdersActivity extends BaseActivity {
     }
 
     private void showPaymentMethodDialog(OrderData order) {
-        // Υπολογισμός συνολικού ποσού
+
         double total = 0.0;
         if (order.items != null) {
             for (Map<String, Object> item : order.items) {
@@ -186,9 +184,8 @@ public class TakeAwayOrdersActivity extends BaseActivity {
                 total += price * qty;
             }
         }
-        final double finalTotal = total;  // κάνε final για χρήση στα lambdas
+        final double finalTotal = total;
 
-        // Αποθήκευσε σε final ή member μεταβλητές
         final String orderNumber = order.orderNumber;
         final String orderId = order.id;
         final List<Map<String, Object>> items = order.items;
@@ -197,7 +194,7 @@ public class TakeAwayOrdersActivity extends BaseActivity {
         new AlertDialog.Builder(this)
                 .setTitle("Επιλογή Τρόπου Πληρωμής")
                 .setItems(options, (dialog, which) -> {
-                    // Αποθήκευσε και στα member πεδία (αν τα χρειάζεσαι αλλού)
+
                     pendingOrderNumber = orderNumber;
                     pendingOrderId = orderId;
                     pendingItems = items;
@@ -209,7 +206,7 @@ public class TakeAwayOrdersActivity extends BaseActivity {
                                 new PaymentManager.PaymentCallback() {
                                     @Override
                                     public void onSuccess(com.ads.paragelia.paroxos.SendResponse response) {
-                                        // Εξαγωγή στοιχείων από την απόκριση
+
                                         String markStr = String.valueOf(response.getMark());
                                         String uid = response.getUid() != null ? response.getUid() : "-";
                                         String authCode = response.getAuthenticationCode() != null ? response.getAuthenticationCode() : "-";
@@ -230,7 +227,7 @@ public class TakeAwayOrdersActivity extends BaseActivity {
                                 new PaymentManager.PaymentCallback() {
                                     @Override
                                     public void onSuccess(com.ads.paragelia.paroxos.SendResponse response) {
-                                        // Εξαγωγή στοιχείων από την απόκριση
+
                                         String markStr = String.valueOf(response.getMark());
                                         String uid = response.getUid() != null ? response.getUid() : "-";
                                         String authCode = response.getAuthenticationCode() != null ? response.getAuthenticationCode() : "-";
@@ -308,9 +305,6 @@ public class TakeAwayOrdersActivity extends BaseActivity {
                 }
             }
 
-            // ------------------------------------------------
-            // Προσθήκη των στοιχείων του παρόχου (Epsilon)
-            // ------------------------------------------------
             format.setAli(Layout.Alignment.ALIGN_CENTER);
             mPrinter.setPrintAppendString("----------------", format);
             format.setAli(Layout.Alignment.ALIGN_NORMAL);
@@ -330,7 +324,7 @@ public class TakeAwayOrdersActivity extends BaseActivity {
                 }
             }
             format.setTextSize(25);
-            // ------------------------------------------------
+
 
             format.setAli(Layout.Alignment.ALIGN_CENTER);
             mPrinter.setPrintAppendString("----------------", format);
@@ -366,7 +360,6 @@ public class TakeAwayOrdersActivity extends BaseActivity {
                 .show();
     }
 
-    // ==================== Adapter ====================
     private class TakeAwayAdapter extends RecyclerView.Adapter<TakeAwayAdapter.ViewHolder> {
         private List<OrderData> list;
 

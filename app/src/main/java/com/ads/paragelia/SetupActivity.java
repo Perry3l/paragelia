@@ -52,7 +52,7 @@ public class SetupActivity extends BaseActivity {
             }
             StoreConfig.saveStoreCode(this, code);
             FirebaseHelper.init(code);
-            saveRole(role); // αποθηκεύει τον ρόλο και ανοίγει το MainActivity
+            saveRole(role);
         });
         builder.setCancelable(false);
         builder.show();

@@ -67,7 +67,7 @@ public class PrinterStatusManager {
                 updateBatteryStatus();
                 updateNfcStatus();
                 updatePrinterStatus();
-                handler.postDelayed(this, 5000); // κάθε 5 δευτερόλεπτα
+                handler.postDelayed(this, 5000);
             }
         };
         handler.post(statusRunnable);

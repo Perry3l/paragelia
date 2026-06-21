@@ -4,7 +4,7 @@ public class HistoryEntry {
     public String type;
     public String tableNumber;
     public double amount;
-    public String paymentMethod; // "cash", "card", ή null
+    public String paymentMethod;
     public String deviceName;
     public long timestamp;
     public String details;
@@ -17,7 +17,6 @@ public class HistoryEntry {
     public static final String TYPE_PARTIAL_PAYMENT = "partial_payment";
 
     public HistoryEntry() {
-        // απαραίτητος κενός constructor για Firebase
     }
 
     public HistoryEntry(String type, String tableNumber, double amount, String paymentMethod,

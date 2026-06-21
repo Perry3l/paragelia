@@ -60,7 +60,6 @@ public class UsbPrinterManager {
         connection = usbManager.openDevice(device);
         if (connection == null) return false;
 
-        // Βρες interface εκτυπωτή
         usbInterface = null;
         for (int i = 0; i < device.getInterfaceCount(); i++) {
             UsbInterface intf = device.getInterface(i);
@@ -79,7 +78,6 @@ public class UsbPrinterManager {
             return false;
         }
 
-        // Βρες OUT endpoint
         outEndpoint = null;
         for (int i = 0; i < usbInterface.getEndpointCount(); i++) {
             UsbEndpoint ep = usbInterface.getEndpoint(i);
@@ -93,7 +91,6 @@ public class UsbPrinterManager {
             return false;
         }
 
-        // ΚΑΛΟΥΜΕ ΤΗΝ INIT PRINTER ΓΙΑ ΕΛΛΗΝΙΚΟΥΣ ΧΑΡΑΚΤΗΡΕΣ
         if (!initPrinter()) {
             connection.close();
             return false;
@@ -102,9 +99,7 @@ public class UsbPrinterManager {
         return true;
     }
 
-    /**
-     * Αρχικοποίηση εκτυπωτή: reset + επιλογή κωδικοσελίδας Windows-1253
-     */
+
     private boolean initPrinter() {
         if (connection == null || outEndpoint == null) return false;
         byte[] reset = {0x1B, 0x40};           // ESC @
@@ -117,7 +112,7 @@ public class UsbPrinterManager {
     public void printText(String text) {
         if (connection == null || outEndpoint == null) return;
         try {
-            // Χρησιμοποιούμε Windows-1253 (ISO-8859-7) για σωστούς ελληνικούς χαρακτήρες
+
             byte[] data = text.getBytes("windows-1253");
             sendRaw(data);
         } catch (UnsupportedEncodingException e) {

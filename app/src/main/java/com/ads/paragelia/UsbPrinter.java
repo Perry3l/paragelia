@@ -1,4 +1,3 @@
-// UsbPrinter.java
 package com.ads.paragelia;
 
 import android.graphics.Bitmap;
@@ -9,7 +8,7 @@ public class UsbPrinter implements PrinterDevice {
     private UsbDevice device;
     private String name;
     private String target;
-    private boolean imageMode = false;   // ΝΕΟ
+    private boolean imageMode = false;
 
     @Override public void setTarget(String target) { this.target = target; }
     @Override public void setImageMode(boolean enabled) { this.imageMode = enabled; }

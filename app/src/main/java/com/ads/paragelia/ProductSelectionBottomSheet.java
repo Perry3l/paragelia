@@ -96,10 +96,8 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         btnSubmitOnly = view.findViewById(R.id.btnSubmitOnly);
         btnSubmitAndPrint = view.findViewById(R.id.btnSubmitAndPrint);
 
-        // In order-only mode, show only one button (hide the print button)
         if (isOrderOnlyMode()) {
             btnSubmitAndPrint.setVisibility(View.GONE);
-            // Optionally make the remaining button full width
             btnSubmitOnly.setLayoutParams(new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
@@ -145,7 +143,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             return true;
         });
 
-        // Πρώτα δημιουργούμε τον adapter
         selectedAdapter = new SelectedItemsAdapter(selectedItems, new SelectedItemsAdapter.OnItemActionListener() {
             @Override
             public void onDecrease(int position) {
@@ -171,7 +168,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         });
         rvSelectedItems.setAdapter(selectedAdapter);
 
-        // Τώρα μπορούμε να φορτώσουμε τα υπάρχοντα δεδομένα
         loadExistingOrder();
 
         loadProductsWithCache();
@@ -191,15 +187,14 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             return false;
         });
 
-        // ========== ΝΕΟΣ ΚΩΔΙΚΑΣ: Αυτόματο άνοιγμα bottom sheet σε πλήρη οθόνη ==========
         getDialog().setOnShowListener(dialog -> {
             BottomSheetDialog bottomSheetDialog = (BottomSheetDialog) dialog;
             FrameLayout bottomSheet = bottomSheetDialog.findViewById(com.google.android.material.R.id.design_bottom_sheet);
             if (bottomSheet != null) {
                 BottomSheetBehavior behavior = BottomSheetBehavior.from(bottomSheet);
                 behavior.setState(BottomSheetBehavior.STATE_EXPANDED);
-                behavior.setPeekHeight(0);      // καμία προεξοχή
-                behavior.setSkipCollapsed(true); // να μην μαζεύεται ποτέ
+                behavior.setPeekHeight(0);
+                behavior.setSkipCollapsed(true);
             }
         });
     }
@@ -251,10 +246,9 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                     List<ProductItem> productList = new ArrayList<>();
 
                     for (DataSnapshot prodSnap : catSnap.getChildren()) {
-                        // Μέσα στο for (DataSnapshot prodSnap : catSnap.getChildren())
                         String productName = prodSnap.getKey();
                         double price = 0.0;
-                        double vatPercent = 13.0; // μεταβλητή εκτός if-else
+                        double vatPercent = 13.0;
                         List<Ingredient> ingredients = new ArrayList<>();
                         List<Addon> addons = new ArrayList<>();
 
@@ -268,12 +262,10 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                             if (priceObj instanceof Number) {
                                 price = ((Number) priceObj).doubleValue();
                             }
-                            // Ανάγνωση vatPercent
                             if (productObj.containsKey("vatPercent")) {
                                 Object vatObj = productObj.get("vatPercent");
                                 vatPercent = vatObj instanceof Number ? ((Number) vatObj).doubleValue() : 13.0;
                             }
-                            // Ανάγνωση συστατικών
                             Object ingredientsObj = productObj.get("ingredients");
                             if (ingredientsObj instanceof Map) {
                                 Map<String, Object> ingsMap = (Map<String, Object>) ingredientsObj;
@@ -288,7 +280,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                                     }
                                 }
                             }
-                            // Ανάγνωση έξτρα υλικών (addons)
                             Object addonsObj = productObj.get("addons");
                             if (addonsObj instanceof Map) {
                                 Map<String, Object> addMap = (Map<String, Object>) addonsObj;
@@ -327,7 +318,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                     showProductsForCategory(currentCategory);
                 }
 
-                // Αποθήκευση στην cache
                 Map<String, Object> cacheMap = new HashMap<>();
                 for (DataSnapshot catSnap : snapshot.getChildren()) {
                     cacheMap.put(catSnap.getKey(), catSnap.getValue());
@@ -583,7 +573,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             return;
         }
 
-        // ---------- ORDER-ONLY MODE (χωρίς διαβίβαση στην ΑΑΔΕ) ----------
         if (isOrderOnlyMode()) {
             // 1. Εκτύπωση (όπως πριν)
             Map<String, List<OrderItem>> itemsByTarget = new HashMap<>();
@@ -698,7 +687,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             return;
         }
 
-        // ---------- NORMAL MODE (fiscal receipts, payments) ----------
 
         if (isTakeAway() || isDelivery()) {
             List<Map<String, Object>> itemsMap = new ArrayList<>();
@@ -712,19 +700,16 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                 itemsMap.add(map);
             }
 
-            DatabaseReference orderRef = getOrderRef(); // TA-xxx ή DL-xxx
+            DatabaseReference orderRef = getOrderRef();
 
-            // Δημιουργούμε το αντικείμενο που θα μπει μέσα στο current_order
             Map<String, Object> orderData = new HashMap<>();
             orderData.put("items", itemsMap);
             orderData.put("timestamp", System.currentTimeMillis());
             orderData.put("status", "ordered");
             orderData.put("orderNumber", tableNumber);
 
-            // Αποθηκεύουμε απευθείας στο current_order, χωρίς το τυχαίο κλειδί (orderId)
             orderRef.child("current_order").setValue(orderData)
                     .addOnSuccessListener(aVoid -> {
-                        // Εκτύπωση μόνο για μη‑RECEIPT targets
                         Map<String, List<OrderItem>> itemsByTarget = new HashMap<>();
                         for (OrderItem item : selectedItems) {
                             String target = "RECEIPT";
@@ -758,7 +743,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             return;
         }
 
-        // ---------- ΚΑΝΟΝΙΚΟ ΤΡΑΠΕΖΙ (υπάρχων κώδικας) ----------
         // 1. Group items by printer target
         Map<String, List<OrderItem>> itemsByTarget = new HashMap<>();
         for (OrderItem item : selectedItems) {
@@ -769,7 +753,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             itemsByTarget.computeIfAbsent(target, k -> new ArrayList<>()).add(item);
         }
 
-// 2. Για κάθε target, χειριζόμαστε ξεχωριστά
         for (Map.Entry<String, List<OrderItem>> entry : itemsByTarget.entrySet()) {
             String target = entry.getKey();
             List<OrderItem> itemsForTarget = entry.getValue();
@@ -785,15 +768,11 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                 itemsMap.add(map);
             }
 
-            // ΠΛΕΟΝ ΔΕΝ ΣΤΕΛΝΟΥΜΕ ΑΥΤΟΜΑΤΑ ΣΤΟ EPSILON (ΑΑΔΕ) ΚΑΤΑ ΤΗΝ ΠΑΡΑΓΓΕΛΙΑ.
-            // Εκτυπώνουμε κανονικά σε Κουζίνα/Μπαρ/Ταμείο (ανάλογα το target)
             saveReceiptDirect(itemsMap, target);
 
-            // Το epsilonResponse πάει ως null, άρα το status θα γίνει "ordered" και το τραπέζι ΠΟΡΤΟΚΑΛΙ!
             saveToFirebaseAndFinish(itemsMap, printReceipt, null, target);
         }
 
-        // Κλείνουμε το BottomSheet
         if (!itemsByTarget.containsKey("RECEIPT")) {
             dismiss();
         }
@@ -813,14 +792,13 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
     }
 
     private void saveToFirebaseAndFinish(List<Map<String, Object>> items, boolean printReceipt, @Nullable SendResponse epsilonResponse, String target) {
-        DatabaseReference orderRef = getOrderRef(); // Δείχνει στο active_bills/tableNumber (ή αντίστοιχα takeaway/delivery)
+        DatabaseReference orderRef = getOrderRef();
         String orderId = orderRef.push().getKey();
 
         Map<String, Object> orderUpdate = new HashMap<>();
         orderUpdate.put("items", items);
         orderUpdate.put("timestamp", System.currentTimeMillis());
 
-        // Ορίζουμε αν η παραγγελία διαβιβάστηκε στην ΑΑΔΕ
         boolean isPassedToAade = (epsilonResponse != null);
         orderUpdate.put("status", isPassedToAade ? "printed" : "ordered");
 
@@ -828,32 +806,29 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             long mark = epsilonResponse.getMark();
             String uid = epsilonResponse.getUid() != null ? epsilonResponse.getUid() : "";
             String qr = epsilonResponse.getQrCode() != null ? epsilonResponse.getQrCode() : "";
-            String auth = epsilonResponse.getAuthenticationCode() != null ? epsilonResponse.getAuthenticationCode() : ""; // <-- Προστέθηκε
+            String auth = epsilonResponse.getAuthenticationCode() != null ? epsilonResponse.getAuthenticationCode() : "";
 
-            // 1. Αποθήκευση στοιχείων μέσα στη συγκεκριμένη παραγγελία
             orderUpdate.put("epsilon_86_mark", String.valueOf(mark));
             orderUpdate.put("epsilon_86_uid", uid);
             orderUpdate.put("epsilon_86_qr", qr);
-            orderUpdate.put("epsilon_86_auth", auth); // <-- Προστέθηκε
+            orderUpdate.put("epsilon_86_auth", auth);
             if (epsilonResponse.getExternalSystemId() != null) {
                 orderUpdate.put("epsilon_86_extId", epsilonResponse.getExternalSystemId());
             }
 
-            // 2. Ενημέρωση του άμεσου last_fiscal_info
             Map<String, Object> lastFiscal = new HashMap<>();
             lastFiscal.put("mark", String.valueOf(mark));
             lastFiscal.put("uid", uid);
             lastFiscal.put("qr", qr);
-            lastFiscal.put("auth", auth); // <-- Προστέθηκε
+            lastFiscal.put("auth", auth);
             lastFiscal.put("fiscal_time", new SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(new Date()));
             orderRef.child("last_fiscal_info").setValue(lastFiscal);
 
-            // 3. Συγχρονισμός με το ιστορικό epsilon_marks του τραπεζιού
             DatabaseReference marksRef = orderRef.child("epsilon_marks").push();
             Map<String, Object> markData = new HashMap<>();
             markData.put("mark", mark);
             markData.put("uid", uid);
-            markData.put("auth", auth); // <-- Προστέθηκε
+            markData.put("auth", auth);
             markData.put("qrUrl", qr);
             markData.put("timestamp", System.currentTimeMillis());
             marksRef.setValue(markData);
@@ -865,7 +840,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                         sendToPrinter(tableNumber, items, target);
                     }
 
-                    // Ακαριαία ενημέρωση του status στον κόμβο current_order για το σωστό χρώμα στο ActiveTablesActivity
                     Map<String, Object> statusUpdate = new HashMap<>();
                     statusUpdate.put("status", isPassedToAade ? "printed" : "ordered");
                     orderRef.child("current_order").updateChildren(statusUpdate);
@@ -884,7 +858,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         btnSubmitAndPrint.setEnabled(true);
     }
 
-    // Βοηθητική μέθοδος για το σωστό κλείσιμο και εκτύπωση
     private void checkAndFinish(int current, int total, List<Map<String, Object>> items, boolean printReceipt) {
         if (current == total) {
             String details = buildOrderSummary(selectedItems);
@@ -905,7 +878,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
 
     private void showVariantSelectionDialog(ProductItem product) {
         if (product.variants.isEmpty()) {
-            // Χωρίς παραλλαγές – χρησιμοποίησε την κανονική τιμή
             if (!product.ingredients.isEmpty()) {
                 showIngredientsRemovalDialog(product, null, product.price);
             } else if (!product.addons.isEmpty()) {
@@ -938,7 +910,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
     }
 
     private void sendToPrinter(String tableNumber, List<Map<String, Object>> items, String target) {
-        // Δημιουργούμε ένα αντικείμενο receipt με τα απαραίτητα δεδομένα
+
         Map<String, Object> receiptData = new HashMap<>();
         receiptData.put("tableNumber", tableNumber);
         receiptData.put("items", items);
@@ -949,12 +921,12 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         DatabaseReference receiptsRef = FirebaseHelper.getReference("receipts");
         receiptsRef.child(tableNumber).setValue(receiptData);
     }
-    // ----- Adapters -----
+
     static class ProductItem {
         String name;
         double price;
         double vatPercent;
-        public String category;   // <-- ΝΕΟ
+        public String category;
         List<Ingredient> ingredients;
         List<Addon> addons;
         List<Variant> variants;
@@ -984,7 +956,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         }
     }
 
-    // ΝΕΟ: κλάση Variant
+
     static class Variant {
         String name;
         double price;
@@ -999,7 +971,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
         double price;
         String comment;
         double vatPercent;
-        public String category;   // προσθήκη
+        public String category;
 
         OrderItem(String n, int q, double p) {
             this.name = n; this.quantity = q; this.price = p;
@@ -1016,7 +988,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             this.comment = c; this.vatPercent = vat;
         }
 
-        // Προσθήκη νέου constructor που δέχεται και category
+
         OrderItem(String n, int q, double p, String c, double vat, String category) {
             this.name = n; this.quantity = q; this.price = p;
             this.comment = c; this.vatPercent = vat;
@@ -1050,10 +1022,8 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             holder.text1.setText(p.name);
             holder.text2.setText("€" + String.format("%.2f", p.price));
 
-            // Απλό κλικ → κανονική ροή
             holder.itemView.setOnClickListener(v -> listener.onProductClick(p));
 
-            // Παρατεταμένο πάτημα → γρήγορη προσθήκη με 1 τεμάχιο
             holder.itemView.setOnLongClickListener(v -> {
                 parent.addProductQuick(p);
                 return true;
@@ -1139,7 +1109,6 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 selectedItems.clear();
 
-                // ΕΛΕΓΧΟΣ: Αν υπάρχει το last_fiscal_info, το τραπέζι ΕΙΝΑΙ ήδη ανοιχτό στην ΑΑΔΕ
                 if (snapshot.hasChild("last_fiscal_info")) {
                     isTableAlreadyOpen = true;
                 }
@@ -1147,11 +1116,8 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                 for (DataSnapshot orderSnap : snapshot.getChildren()) {
                     Map<String, Object> order = (Map<String, Object>) orderSnap.getValue();
                     if (order != null && order.containsKey("items")) {
-                        // Αν βρούμε οποιαδήποτε προηγούμενα items, γνωρίζουμε ότι το τραπέζι είναι ενεργό
                         isTableAlreadyOpen = true;
 
-                        // ΔΙΑΓΡΑΦΗ: Αφαιρέσαμε το loop που αντέγραφε τα παλιά είδη στο τρέχον καλάθι!
-                        // Έτσι, η οθόνη περιέχει αυστηρά και μόνο τα ΝΕΑ είδη που χτυπάει ο σερβιτόρος.
                     }
                 }
                 selectedAdapter.notifyDataSetChanged();
@@ -1179,7 +1145,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
 
         if (isTakeAway()) {
             orderUpdate.put("orderNumber", tableNumber);
-        } else if (isDelivery()) {                     // <-- προσθήκη
+        } else if (isDelivery()) {
             orderUpdate.put("orderNumber", tableNumber);
         } else {
             orderUpdate.put("tableNumber", Integer.parseInt(tableNumber));
@@ -1243,7 +1209,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
     private void loadProductsWithCache() {
         MenuRepository repo = MenuRepository.getInstance();
         if (repo.isLoaded()) {
-            // Άμεσα από τη μνήμη
+
             categoryList = repo.getCategories();
             productsByCategoryFull = repo.getProductsByCategory();
             allProducts = repo.getAllProducts();
@@ -1253,7 +1219,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
                 showProductsForCategory(currentCategory);
             }
         } else {
-            // Πρώτη φορά – φόρτωσε και περίμενε
+
             repo.loadMenu(getContext(), () -> {
                 if (isAdded()) {
                     categoryList = repo.getCategories();

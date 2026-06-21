@@ -36,13 +36,11 @@ public class AppUpdateManager {
     private static final String FIREBASE_URL = "https://genikaserver-default-rtdb.europe-west1.firebasedatabase.app/";
 
     public AppUpdateManager(Context context) {
-        this.context = context.getApplicationContext(); // αποφεύγουμε leak της Activity
+        this.context = context.getApplicationContext();
         this.providerAuthority = context.getPackageName() + ".fileprovider";
     }
 
-    /**
-     * Καλείται από την Activity όταν καταστρέφεται, για να κλείσει τυχόν ανοιχτό dialog.
-     */
+
     public void cleanup() {
         isDestroyed = true;
         if (dialogRef != null) {
@@ -98,7 +96,6 @@ public class AppUpdateManager {
     }
 
     private void showUpdateDialog(String apkUrl) {
-        // Το context μπορεί να είναι Application context, δεν μπορούμε να δείξουμε dialog
         if (!(context instanceof Activity)) {
             Log.w(TAG, "Context is not an Activity, downloading without dialog");
             downloadAndInstall(apkUrl);
@@ -106,7 +103,6 @@ public class AppUpdateManager {
         }
 
         Activity activity = (Activity) context;
-        // Αν η Activity έχει ήδη καταστραφεί, μην εμφανίζεις dialog
         if (activity.isFinishing() || activity.isDestroyed()) {
             Log.w(TAG, "Activity is finishing or destroyed, cannot show dialog");
             return;
@@ -148,7 +144,6 @@ public class AppUpdateManager {
                         }
                         fos.flush();
                     }
-                    // Αμέσως μετά το κατέβασμα, προχωράμε στην εγκατάσταση (χωρίς delay)
                     installApk(apkFile);
                 }
             } catch (Exception e) {
@@ -158,13 +153,11 @@ public class AppUpdateManager {
     }
 
     private void installApk(File file) {
-        // Αφαιρέθηκε η αποτυχημένη σιωπηρή εγκατάσταση ZCS
         installNormal(file);
     }
 
     private void installNormal(File file) {
         new Handler(Looper.getMainLooper()).post(() -> {
-            // Ελέγχουμε αν η Activity (context) είναι ακόμα έγκυρη
             if (isDestroyed) {
                 Log.w(TAG, "Manager already destroyed, cannot install");
                 return;
@@ -180,7 +173,6 @@ public class AppUpdateManager {
                 return;
             }
 
-            // Προσπάθεια απελευθέρωσης lock task αν υπάρχει
             try {
                 activity.stopLockTask();
             } catch (Exception e) {
