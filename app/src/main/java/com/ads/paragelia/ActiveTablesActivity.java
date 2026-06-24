@@ -445,6 +445,7 @@ public class ActiveTablesActivity extends BaseActivity {
                     }
                     @Override
                     public void onCancelled(@NonNull DatabaseError error) {
+                        DeviceReporter.getInstance(ActiveTablesActivity.this).logError("ActiveTables", error.toException());
                         resetUnmergeMode();
                     }
                 });
@@ -827,6 +828,7 @@ public class ActiveTablesActivity extends BaseActivity {
             }
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
+                DeviceReporter.getInstance(ActiveTablesActivity.this).logError("ActiveTables", error.toException());
                 Log.e(TAG, "Σφάλμα ανάγνωσης λογαριασμών: " + error.getMessage());
             }
         };
@@ -945,6 +947,7 @@ public class ActiveTablesActivity extends BaseActivity {
             }
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
+                DeviceReporter.getInstance(ActiveTablesActivity.this).logError("ActiveTables", error.toException());
                 Toast.makeText(ActiveTablesActivity.this, "Σφάλμα ελέγχου προορισμού: " + error.getMessage(), Toast.LENGTH_SHORT).show();
                 resetMoveMode();
             }
@@ -986,6 +989,7 @@ public class ActiveTablesActivity extends BaseActivity {
             }
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
+                DeviceReporter.getInstance(ActiveTablesActivity.this).logError("ActiveTables", error.toException());
                 Toast.makeText(ActiveTablesActivity.this, "Σφάλμα: " + error.getMessage(), Toast.LENGTH_SHORT).show();
                 resetMoveMode();
             }
@@ -1152,6 +1156,7 @@ public class ActiveTablesActivity extends BaseActivity {
                     }
                     @Override
                     public void onCancelled(@NonNull DatabaseError error) {
+                        DeviceReporter.getInstance(ActiveTablesActivity.this).logError("ActiveTables", error.toException());
                         resetMergeMode();
                     }
                 });
@@ -1303,6 +1308,7 @@ public class ActiveTablesActivity extends BaseActivity {
             }
             @Override
             public void onCancelled(@NonNull DatabaseError error) {
+                DeviceReporter.getInstance(ActiveTablesActivity.this).logError("ActiveTables", error.toException());
                 onComplete.run();
             }
         });

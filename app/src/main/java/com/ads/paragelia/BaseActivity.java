@@ -43,6 +43,12 @@ public class BaseActivity extends AppCompatActivity {
                 handler.postDelayed(hideRunnable, 100);
             }
         });
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            DeviceReporter.getInstance(this).logError("Uncaught", throwable);
+            // Προαιρετικά: τερματισμός ή επανεκκίνηση
+            android.os.Process.killProcess(android.os.Process.myPid());
+            System.exit(1);
+        });
     }
 
     protected void applyMemoryOverlaySetting() {

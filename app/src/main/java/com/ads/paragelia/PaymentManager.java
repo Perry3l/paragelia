@@ -138,6 +138,7 @@ public class PaymentManager {
 
                     @Override
                     public void onError(String message) {
+                        DeviceReporter.getInstance(activity).logError("PaymentManager", new Exception(message));
                         if (message.contains("401")) {
                             Log.w("PaymentManager", "Λήξη Token (401) στο requestPayment. Ασφαλής ανανέωση κωδικών POS...");
                             refreshTokenAndRetryPosPayment(originalMark, amount, tableNumber);

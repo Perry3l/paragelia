@@ -680,6 +680,7 @@ public class ProductSelectionBottomSheet extends BottomSheetDialogFragment {
 
                 @Override
                 public void onCancelled(@NonNull DatabaseError error) {
+                    DeviceReporter.getInstance(getContext()).logError("ProductSelectionBottomSheet", error.toException());
                     Toast.makeText(getContext(), "Σφάλμα ανάγνωσης: " + error.getMessage(), Toast.LENGTH_SHORT).show();
                     resetButtons();
                 }
