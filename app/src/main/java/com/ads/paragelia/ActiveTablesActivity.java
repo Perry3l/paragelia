@@ -141,14 +141,7 @@ public class ActiveTablesActivity extends BaseActivity {
             @Override
             public void onTableClicked(ActiveTableAdapter.TableCardData data) {
                 if (isUnmergeMode) {
-                    if (!data.isEmpty && data.tableData != null && data.tableData.containsKey("current_order")) {
-                        Map<String, Object> cur = (Map<String, Object>) data.tableData.get("current_order");
-                        if (cur != null && cur.containsKey("merged_from")) {
-                            unmergeTable(data.tableNumber);
-                            return;
-                        }
-                    }
-                    Toast.makeText(ActiveTablesActivity.this, "Το τραπέζι δεν είναι συγχωνευμένο", Toast.LENGTH_SHORT).show();
+                    unmergeTable(data.tableNumber);
                     return;
                 }
                 if (data.isEmpty && !isMoveMode && !isMergeMode) {
@@ -406,46 +399,18 @@ public class ActiveTablesActivity extends BaseActivity {
             }
 
             private void unmergeTable(String tableNumber) {
-                billsRef.child(tableNumber).child("current_order").addListenerForSingleValueEvent(new ValueEventListener() {
+                TableMergeHelper.unmerge(tableNumber, new TableMergeHelper.Callback() {
                     @Override
-                    public void onDataChange(@NonNull DataSnapshot snapshot) {
-                        if (!snapshot.exists()) {
-                            Toast.makeText(ActiveTablesActivity.this, "Το τραπέζι δεν έχει παραγγελία", Toast.LENGTH_SHORT).show();
-                            resetUnmergeMode();
-                            return;
-                        }
-                        Map<String, Object> curOrder = (Map<String, Object>) snapshot.getValue();
-                        if (curOrder == null || !curOrder.containsKey("merged_from")) {
-                            Toast.makeText(ActiveTablesActivity.this, "Το τραπέζι δεν είναι συγχωνευμένο", Toast.LENGTH_SHORT).show();
-                            resetUnmergeMode();
-                            return;
-                        }
-                        String mergedFrom = (String) curOrder.get("merged_from");
-                        billsRef.child(tableNumber).child("current_order").child("merged_from").removeValue()
-                                .addOnSuccessListener(aVoid -> {
-                                    billsRef.child(mergedFrom).removeValue()
-                                            .addOnSuccessListener(aVoid2 -> {
-                                                saveToHistory(HistoryEntry.TYPE_TABLE_MOVED,
-                                                        tableNumber + " διασπάστηκε από " + mergedFrom, 0.0, null,
-                                                        "Διάσπαση τραπεζιών");
-                                                Toast.makeText(ActiveTablesActivity.this,
-                                                        "Το τραπέζι " + tableNumber + " διασπάστηκε από το " + mergedFrom,
-                                                        Toast.LENGTH_SHORT).show();
-                                                resetUnmergeMode();
-                                            })
-                                            .addOnFailureListener(e -> {
-                                                Toast.makeText(ActiveTablesActivity.this, "Σφάλμα καθαρισμού πηγής", Toast.LENGTH_SHORT).show();
-                                                resetUnmergeMode();
-                                            });
-                                })
-                                .addOnFailureListener(e -> {
-                                    Toast.makeText(ActiveTablesActivity.this, "Σφάλμα ενημέρωσης τραπεζιού", Toast.LENGTH_SHORT).show();
-                                    resetUnmergeMode();
-                                });
+                    public void onSuccess(String message) {
+                        saveToHistory(HistoryEntry.TYPE_TABLE_MOVED,
+                                "Διάσπαση " + tableNumber, 0.0, null, "Διάσπαση τραπεζιών");
+                        Toast.makeText(ActiveTablesActivity.this, message, Toast.LENGTH_SHORT).show();
+                        resetUnmergeMode();
                     }
+
                     @Override
-                    public void onCancelled(@NonNull DatabaseError error) {
-                        DeviceReporter.getInstance(ActiveTablesActivity.this).logError("ActiveTables", error.toException());
+                    public void onError(String message) {
+                        Toast.makeText(ActiveTablesActivity.this, message, Toast.LENGTH_SHORT).show();
                         resetUnmergeMode();
                     }
                 });
@@ -755,7 +720,7 @@ public class ActiveTablesActivity extends BaseActivity {
                                         String mergedFrom = (String) cur.get("merged_from");
                                         String part1 = tableNumber;
                                         String part2 = mergedFrom;
-                                        if (Integer.parseInt(part1) > Integer.parseInt(part2)) {
+                                        if (compareTableNumbers(part1, part2) > 0) {
                                             String temp = part1;
                                             part1 = part2;
                                             part2 = temp;
@@ -804,7 +769,7 @@ public class ActiveTablesActivity extends BaseActivity {
                                     String mergedFrom = (String) cur.get("merged_from");
                                     String part1 = tableNumber;
                                     String part2 = mergedFrom;
-                                    if (Integer.parseInt(part1) > Integer.parseInt(part2)) {
+                                    if (compareTableNumbers(part1, part2) > 0) {
                                         String temp = part1;
                                         part1 = part2;
                                         part2 = temp;
@@ -1088,81 +1053,19 @@ public class ActiveTablesActivity extends BaseActivity {
         void onComplete();
     }
 
-    private void addAllItemsFromTableData(Map<String, Object> tableData, List<Map<String, Object>> targetList) {
-        if (tableData == null) return;
-        for (Map.Entry<String, Object> entry : tableData.entrySet()) {
-            if (entry.getKey().equals("last_fiscal_info") ||
-                    entry.getKey().equals("epsilon_marks") ||
-                    entry.getKey().equals("current_order")) continue;
-            if (!(entry.getValue() instanceof Map)) continue;
-            Map<String, Object> order = (Map<String, Object>) entry.getValue();
-            Object itemsObj = order.get("items");
-            if (itemsObj instanceof List) {
-                targetList.addAll((List<Map<String, Object>>) itemsObj);
-            }
-        }
-    }
-
     private void performMerge(String source, String destination) {
-        DatabaseReference sourceRef = billsRef.child(source);
-        DatabaseReference destRef = billsRef.child(destination);
-        sourceRef.addListenerForSingleValueEvent(new ValueEventListener() {
+        TableMergeHelper.merge(source, destination, new TableMergeHelper.Callback() {
             @Override
-            public void onDataChange(@NonNull DataSnapshot sourceSnap) {
-                if (!sourceSnap.exists()) {
-                    Toast.makeText(ActiveTablesActivity.this, "Το τραπέζι πηγή δεν έχει δεδομένα", Toast.LENGTH_SHORT).show();
-                    resetMergeMode();
-                    return;
-                }
-                Map<String, Object> sourceData = (Map<String, Object>) sourceSnap.getValue();
-                destRef.addListenerForSingleValueEvent(new ValueEventListener() {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot destSnap) {
-                        Map<String, Object> destData = destSnap.exists() ? (Map<String, Object>) destSnap.getValue() : new HashMap<>();
-                        List<Map<String, Object>> combinedItems = new ArrayList<>();
-                        addAllItemsFromTableData(destData, combinedItems);
-                        addAllItemsFromTableData(sourceData, combinedItems);
-                        Map<String, Object> newOrder = new HashMap<>();
-                        newOrder.put("items", combinedItems);
-                        newOrder.put("timestamp", System.currentTimeMillis());
-                        newOrder.put("tableNumber", Integer.parseInt(destination));
-                        newOrder.put("status", "pending");
-                        newOrder.put("merged_from", source);
-                        destRef.child("current_order").setValue(newOrder)
-                                .addOnSuccessListener(aVoid -> {
-                                    Map<String, Object> mergedFlag = new HashMap<>();
-                                    mergedFlag.put("merged_to", destination);
-                                    sourceRef.setValue(mergedFlag)
-                                            .addOnSuccessListener(aVoid2 -> {
-                                                saveToHistory(HistoryEntry.TYPE_TABLE_MERGED,
-                                                        source + " → " + destination, 0.0, null,
-                                                        "Συγχώνευση τραπεζιών");
-                                                Toast.makeText(ActiveTablesActivity.this,
-                                                        "Συγχώνευση ολοκληρώθηκε: " + source + " + " + destination,
-                                                        Toast.LENGTH_SHORT).show();
-                                                resetMergeMode();
-                                            })
-                                            .addOnFailureListener(e -> {
-                                                Toast.makeText(ActiveTablesActivity.this,
-                                                        "Σφάλμα μαρκαρίσματος πηγής", Toast.LENGTH_SHORT).show();
-                                                resetMergeMode();
-                                            });
-                                })
-                                .addOnFailureListener(e -> {
-                                    Toast.makeText(ActiveTablesActivity.this,
-                                            "Σφάλμα αποθήκευσης προορισμού", Toast.LENGTH_SHORT).show();
-                                    resetMergeMode();
-                                });
-                    }
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError error) {
-                        DeviceReporter.getInstance(ActiveTablesActivity.this).logError("ActiveTables", error.toException());
-                        resetMergeMode();
-                    }
-                });
+            public void onSuccess(String message) {
+                saveToHistory(HistoryEntry.TYPE_TABLE_MERGED,
+                        source + " → " + destination, 0.0, null, "Συγχώνευση τραπεζιών");
+                Toast.makeText(ActiveTablesActivity.this, message, Toast.LENGTH_SHORT).show();
+                resetMergeMode();
             }
+
             @Override
-            public void onCancelled(@NonNull DatabaseError error) {
+            public void onError(String message) {
+                Toast.makeText(ActiveTablesActivity.this, message, Toast.LENGTH_LONG).show();
                 resetMergeMode();
             }
         });
@@ -1176,6 +1079,15 @@ public class ActiveTablesActivity extends BaseActivity {
             selectedSourceCard = null;
         }
         btnMergeTables.setText("Συγχώνευση");
+    }
+
+    /** Αριθμητική σύγκριση όπου γίνεται, αλλιώς αλφαβητική — χωρίς crash σε μη-αριθμητικά τραπέζια. */
+    private static int compareTableNumbers(String a, String b) {
+        try {
+            return Integer.compare(Integer.parseInt(a.trim()), Integer.parseInt(b.trim()));
+        } catch (NumberFormatException e) {
+            return a.compareTo(b);
+        }
     }
 
     @Override

@@ -26,10 +26,10 @@ public class TakeAwayActivity extends BaseActivity {
 
         fetchNextOrderNumber(orderNumber -> {
             currentOrderNumber = orderNumber;
-            ProductSelectionBottomSheet bottomSheet = ProductSelectionBottomSheet.newInstance("TA-" + orderNumber);
-            bottomSheet.show(getSupportFragmentManager(), "takeaway_sheet");
-
-            bottomSheet.setOnDismissListener(dialog -> finish());
+            android.content.Intent intent = new android.content.Intent(this, QuickOrderActivity.class);
+            intent.putExtra(QuickOrderActivity.EXTRA_TABLE_NUMBER, "TA-" + orderNumber);
+            startActivity(intent);
+            finish();
         });
     }
 

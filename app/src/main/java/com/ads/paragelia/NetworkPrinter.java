@@ -50,38 +50,47 @@ public class NetworkPrinter implements PrinterDevice {
         try {
             socket = new Socket();
             socket.connect(new InetSocketAddress(ip, port), 3000);
+            socket.setSoTimeout(5000);
             outputStream = socket.getOutputStream();
             return true;
         } catch (IOException e) {
             Log.e("NetworkPrinter", "Σφάλμα σύνδεσης", e);
+            disconnect();
             return false;
         }
     }
 
-    @Override
-    public void print(String text) {
-        if (socket == null || !socket.isConnected()) {
-            if (!connect()) return;
+    private boolean writeWithRetry(byte[] data, String errorLabel) {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                if (socket == null || socket.isClosed() || !socket.isConnected()) {
+                    if (!connect()) continue;
+                }
+                outputStream.write(data);
+                outputStream.flush();
+                return true;
+            } catch (IOException e) {
+                Log.e("NetworkPrinter", errorLabel + " (προσπάθεια " + (attempt + 1) + ")", e);
+                disconnect();
+            }
         }
-        try {
-            outputStream.write(text.getBytes("UTF-8"));
-            outputStream.flush();
-        } catch (IOException e) {
-            Log.e("NetworkPrinter", "Σφάλμα εκτύπωσης", e);
-            try { socket.close(); } catch (IOException ignored) {}
-            socket = null;
-        }
+        return false;
     }
 
-    public void printBitmap(Bitmap bitmap) {
-        if (!connect()) return;
-        byte[] data = BitmapPrinterHelper.bitmapToEscPos(bitmap);
+    @Override
+    public boolean print(String text) {
+        byte[] data;
         try {
-            outputStream.write(data);
-            outputStream.flush();
-        } catch (IOException e) {
-            Log.e("NetworkPrinter", "Σφάλμα εκτύπωσης bitmap", e);
+            data = text.getBytes("UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            data = text.getBytes();
         }
+        return writeWithRetry(data, "Σφάλμα εκτύπωσης");
+    }
+
+    public boolean printBitmap(Bitmap bitmap) {
+        byte[] data = BitmapPrinterHelper.bitmapToEscPos(bitmap);
+        return writeWithRetry(data, "Σφάλμα εκτύπωσης bitmap");
     }
 
     @Override

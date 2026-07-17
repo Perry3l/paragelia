@@ -109,21 +109,21 @@ public class UsbPrinterManager {
         return r1 >= 0 && r2 >= 0;
     }
 
-    public void printText(String text) {
-        if (connection == null || outEndpoint == null) return;
+    public boolean printText(String text) {
+        if (connection == null || outEndpoint == null) return false;
         try {
-
             byte[] data = text.getBytes("windows-1253");
-            sendRaw(data);
+            return sendRaw(data);
         } catch (UnsupportedEncodingException e) {
             // Fallback σε UTF-8
-            sendRaw(text.getBytes(StandardCharsets.UTF_8));
+            return sendRaw(text.getBytes(StandardCharsets.UTF_8));
         }
     }
 
-    public void sendRaw(byte[] data) {
-        if (connection == null || outEndpoint == null) return;
-        connection.bulkTransfer(outEndpoint, data, data.length, 5000);
+    public boolean sendRaw(byte[] data) {
+        if (connection == null || outEndpoint == null) return false;
+        int transferred = connection.bulkTransfer(outEndpoint, data, data.length, 5000);
+        return transferred >= 0;
     }
 
     public void cutPaper() {

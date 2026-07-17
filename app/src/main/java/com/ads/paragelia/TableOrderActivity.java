@@ -47,6 +47,7 @@ public class TableOrderActivity extends BaseActivity {
     private String currentTableQrUrl = "";
     private String currentTableFiscalTime = "";
     private boolean hadExistingOrders = false;
+    private String currentOrderMergedFrom = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -336,7 +337,7 @@ public class TableOrderActivity extends BaseActivity {
         }
         newOrder.put("items", itemsList);
         newOrder.put("timestamp", System.currentTimeMillis());
-        newOrder.put("tableNumber", Integer.parseInt(tableNumber));
+        newOrder.put("tableNumber", TableMergeHelper.safeTableValue(tableNumber));
         newOrder.put("status", "pending");
 
         DatabaseReference orderRef = FirebaseHelper.getReference("orders");
@@ -361,6 +362,7 @@ public class TableOrderActivity extends BaseActivity {
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 cartItems.clear();
                 hadExistingOrders = false;
+                currentOrderMergedFrom = null;
 
                 if (snapshot.hasChild("last_fiscal_info")) {
                     DataSnapshot fiscalSnap = snapshot.child("last_fiscal_info");
@@ -410,6 +412,29 @@ public class TableOrderActivity extends BaseActivity {
 
                             String comment = item.containsKey("comment") ? (String) item.get("comment") : "";
                             cartItems.add(new CartItem(name, quantity, price, comment, orderSnapshot.getKey()));
+                        }
+                    }
+                }
+
+                // Φόρτωση και των ειδών του current_order (π.χ. μετά από συγχώνευση τραπεζιών) —
+                // αλλιώς η αποθήκευση αλλαγών θα τα διέγραφε σιωπηλά.
+                if (snapshot.hasChild("current_order")) {
+                    Map<String, Object> cur = (Map<String, Object>) snapshot.child("current_order").getValue();
+                    if (cur != null) {
+                        Object mf = cur.get("merged_from");
+                        if (mf instanceof String) currentOrderMergedFrom = (String) mf;
+
+                        if (cur.get("items") instanceof List) {
+                            for (Map<String, Object> item : (List<Map<String, Object>>) cur.get("items")) {
+                                String name = (String) item.get("name");
+                                int quantity = item.get("quantity") instanceof Number
+                                        ? ((Number) item.get("quantity")).intValue() : 0;
+                                double price = item.get("price") instanceof Number
+                                        ? ((Number) item.get("price")).doubleValue() : 0.0;
+                                String comment = item.get("comment") instanceof String
+                                        ? (String) item.get("comment") : "";
+                                cartItems.add(new CartItem(name, quantity, price, comment, "current_order"));
+                            }
                         }
                     }
                 }
@@ -548,8 +573,12 @@ public class TableOrderActivity extends BaseActivity {
         }
         newOrder.put("items", itemsList);
         newOrder.put("timestamp", System.currentTimeMillis());
-        newOrder.put("tableNumber", Integer.parseInt(tableNumber));
+        newOrder.put("tableNumber", TableMergeHelper.safeTableValue(tableNumber));
         newOrder.put("status", "pending");
+        // Διατήρηση της συγχώνευσης — αλλιώς η επεξεργασία θα «έσπαγε» το link των τραπεζιών
+        if (currentOrderMergedFrom != null) {
+            newOrder.put("merged_from", currentOrderMergedFrom);
+        }
 
         activeBillsRef.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override

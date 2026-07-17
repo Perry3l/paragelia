@@ -93,6 +93,9 @@
             android:name=".NewOrderActivity"
             android:exported="false" />
         <activity
+            android:name=".QuickOrderActivity"
+            android:exported="false" />
+        <activity
             android:name=".SetupActivity"
             android:exported="false" />
         <activity

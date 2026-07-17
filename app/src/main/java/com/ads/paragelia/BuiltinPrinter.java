@@ -65,21 +65,21 @@ public class BuiltinPrinter implements PrinterDevice {
     }
 
     @Override
-    public void print(String text) {
+    public boolean print(String text) {
+        if (mPrinter == null) return false;
         PrnStrFormat format = new PrnStrFormat();
         format.setTextSize(25);
         format.setStyle(PrnTextStyle.NORMAL);
         format.setFont(PrnTextFont.MONOSPACE);
         format.setAli(Layout.Alignment.ALIGN_NORMAL);
         mPrinter.setPrintAppendString(text, format);
-        mPrinter.setPrintStart();
+        return mPrinter.setPrintStart() == SdkResult.SDK_OK;
     }
 
-    public void printBitmap(Bitmap bitmap) {
-        if (mPrinter != null) {
-            mPrinter.setPrintAppendBitmap(bitmap, Layout.Alignment.ALIGN_CENTER);
-            mPrinter.setPrintStart();
-        }
+    public boolean printBitmap(Bitmap bitmap) {
+        if (mPrinter == null) return false;
+        mPrinter.setPrintAppendBitmap(bitmap, Layout.Alignment.ALIGN_CENTER);
+        return mPrinter.setPrintStart() == SdkResult.SDK_OK;
     }
 
     @Override

@@ -358,22 +358,47 @@ public class PrinterActivity extends BaseActivity {
 
     private void printOrder(String orderId, Map<String, Object> order) {
         String target = order.containsKey("printerTarget") ? order.get("printerTarget").toString() : "RECEIPT";
-        List<PrinterDevice> printers = printerManager.getPrintersByTarget(target);
-        if (printers.isEmpty()) printers = printerManager.getPrintersByTarget("RECEIPT");
-
         String text = buildOrderText(order);
-        for (PrinterDevice printer : printers) {
-            if (printer.isAvailable()) {
-                printExecutor.execute(() -> {
-                    printer.print(text);
-                    printer.cutPaper();
-                });
+
+        // C1: ο έλεγχος isAvailable() (Socket) και η εκτύπωση τρέχουν σε background thread,
+        // ώστε να μην ρίχνουν NetworkOnMainThreadException μέσα στο Firebase callback.
+        printExecutor.execute(() -> {
+            List<PrinterDevice> printers = printerManager.getPrintersByTarget(target);
+            if (printers.isEmpty()) printers = printerManager.getPrintersByTarget("RECEIPT");
+
+            boolean anyAvailable = false;
+            boolean allPrinted = true;
+            for (PrinterDevice printer : printers) {
+                if (printer.isAvailable()) {
+                    anyAvailable = true;
+                    if (printer.print(text)) {
+                        printer.cutPaper();
+                    } else {
+                        allPrinted = false;
+                    }
+                } else {
+                    allPrinted = false;
+                }
             }
+            finalizeOrder(orderId, order, anyAvailable && allPrinted);
+        });
+    }
+
+    private void finalizeOrder(String orderId, Map<String, Object> order, boolean printedOk) {
+        String tableNumber = order.get("tableNumber") != null ? order.get("tableNumber").toString() : "0";
+
+        // C2: Το order περνά πάντα στο active_bills (δεν χάνεται η παραγγελία), αλλά αν η εκτύπωση
+        // απέτυχε το μαρκάρουμε ώστε να φαίνεται στο UI και να μπορεί να επανεκτυπωθεί.
+        Map<String, Object> orderToSave = order;
+        if (!printedOk) {
+            orderToSave = new java.util.HashMap<>(order);
+            orderToSave.put("print_failed", true);
+            orderToSave.put("print_failed_at", System.currentTimeMillis());
+            Log.e(TAG, "Η παραγγελία " + orderId + " δεν εκτυπώθηκε σε κανέναν διαθέσιμο εκτυπωτή");
         }
 
-        String tableNumber = order.get("tableNumber") != null ? order.get("tableNumber").toString() : "0";
         DatabaseReference billsRef = FirebaseHelper.getReference("active_bills").child(tableNumber).child(orderId);
-        billsRef.setValue(order).addOnCompleteListener(task -> {
+        billsRef.setValue(orderToSave).addOnCompleteListener(task -> {
             if (task.isSuccessful()) ordersRef.child(orderId).removeValue();
         });
     }
@@ -382,8 +407,11 @@ public class PrinterActivity extends BaseActivity {
         String target = (String) receiptData.get("target");
         if (target == null) target = "RECEIPT";
 
-        List<PrinterDevice> printers = printerManager.getPrintersByTarget(target);
-        if (printers.isEmpty()) printers = printerManager.getPrintersByTarget("RECEIPT");
+        // Απόκομμα νούμερου Take Away: τυπώνεται ως εικόνα με τεράστια ψηφία
+        if ("takeaway_number".equals(receiptData.get("type"))) {
+            printTakeawayNumberSlip(receiptId, receiptData, target);
+            return;
+        }
 
         String fullText = buildFullReceiptText(receiptData);
         String text = buildReceiptText(receiptData);
@@ -393,44 +421,113 @@ public class PrinterActivity extends BaseActivity {
         String auth = (String) receiptData.get("epsilon_auth");
         String qrUrl = (String) receiptData.get("epsilon_qr");
 
-        for (PrinterDevice printer : printers) {
-            if (!printer.isAvailable()) continue;
-            printExecutor.execute(() -> {
-                if (printer.isImageMode()) {
-                    Bitmap bitmap = BitmapPrinterHelper.textToBitmap(fullText, 576, 24);
-                    if (printer instanceof BuiltinPrinter) {
-                        ((BuiltinPrinter) printer).printBitmap(bitmap);
-                    } else if (printer instanceof NetworkPrinter) {
-                        ((NetworkPrinter) printer).printBitmap(bitmap);
-                    } else if (printer instanceof UsbPrinter) {
-                        ((UsbPrinter) printer).printBitmap(bitmap);
+        final String finalTarget = target;
+        // C1 + C2: όλα σε background thread· η απόδειξη διαγράφεται ΜΟΝΟ αν όντως εκτυπώθηκε.
+        printExecutor.execute(() -> {
+            List<PrinterDevice> printers = printerManager.getPrintersByTarget(finalTarget);
+            if (printers.isEmpty()) printers = printerManager.getPrintersByTarget("RECEIPT");
+
+            boolean anyAvailable = false;
+            boolean allPrinted = true;
+            for (PrinterDevice printer : printers) {
+                if (!printer.isAvailable()) {
+                    allPrinted = false;
+                    continue;
+                }
+                anyAvailable = true;
+                if (!printOneReceipt(printer, fullText, text, mark, uid, auth, qrUrl)) {
+                    allPrinted = false;
+                }
+            }
+
+            if (anyAvailable && allPrinted) {
+                receiptsRef.child(receiptId).removeValue();
+            } else {
+                // Φορολογικό παραστατικό — ΔΕΝ το σβήνουμε αν δεν τυπώθηκε. Μένει για επανεκτύπωση.
+                Log.e(TAG, "Η απόδειξη " + receiptId + " ΔΕΝ εκτυπώθηκε — διατηρείται στο Firebase");
+                receiptsRef.child(receiptId).child("print_failed").setValue(true);
+                receiptsRef.child(receiptId).child("print_failed_at").setValue(System.currentTimeMillis());
+            }
+        });
+    }
+
+    /** Εκτυπώνει bitmap στον σωστό τύπο εκτυπωτή. Επιστρέφει true σε επιτυχία. */
+    private boolean printBitmapOn(PrinterDevice printer, Bitmap bitmap) {
+        if (printer instanceof BuiltinPrinter) return ((BuiltinPrinter) printer).printBitmap(bitmap);
+        if (printer instanceof NetworkPrinter) return ((NetworkPrinter) printer).printBitmap(bitmap);
+        if (printer instanceof UsbPrinter) return ((UsbPrinter) printer).printBitmap(bitmap);
+        return false;
+    }
+
+    /** Απόκομμα με το νούμερο παραλαβής Take Away — μεγάλα ψηφία για να φωνάζεται εύκολα. */
+    private void printTakeawayNumberSlip(String receiptId, Map<String, Object> receiptData, String target) {
+        String number = receiptData.get("number") != null ? String.valueOf(receiptData.get("number")) : "?";
+        long ts = receiptData.get("timestamp") instanceof Number
+                ? ((Number) receiptData.get("timestamp")).longValue() : System.currentTimeMillis();
+        String time = android.text.format.DateFormat.format("HH:mm", ts).toString();
+
+        printExecutor.execute(() -> {
+            List<PrinterDevice> printers = printerManager.getPrintersByTarget(target);
+            if (printers.isEmpty()) printers = printerManager.getPrintersByTarget("RECEIPT");
+
+            Bitmap slip = BitmapPrinterHelper.takeawayNumberSlip("TAKE AWAY", number, "Ώρα: " + time, 576);
+
+            boolean anyAvailable = false;
+            boolean allPrinted = true;
+            for (PrinterDevice printer : printers) {
+                if (!printer.isAvailable()) {
+                    allPrinted = false;
+                    continue;
+                }
+                anyAvailable = true;
+                boolean ok = printBitmapOn(printer, slip);
+                ok = printer.print("\n\n\n") && ok;
+                printer.cutPaper();
+                if (!ok) allPrinted = false;
+            }
+
+            if (anyAvailable && allPrinted) {
+                receiptsRef.child(receiptId).removeValue();
+            } else {
+                Log.e(TAG, "Το απόκομμα νούμερου " + number + " ΔΕΝ εκτυπώθηκε — διατηρείται για επανεκτύπωση");
+                receiptsRef.child(receiptId).child("print_failed").setValue(true);
+                receiptsRef.child(receiptId).child("print_failed_at").setValue(System.currentTimeMillis());
+            }
+        });
+    }
+
+    /** Εκτυπώνει μία απόδειξη σε έναν εκτυπωτή. Επιστρέφει true μόνο αν όλα τα βήματα πέτυχαν. */
+    private boolean printOneReceipt(PrinterDevice printer, String fullText, String text,
+                                    String mark, String uid, String auth, String qrUrl) {
+        boolean ok;
+        if (printer.isImageMode()) {
+            Bitmap bitmap = BitmapPrinterHelper.textToBitmap(fullText, 576, 24);
+            ok = printBitmapOn(printer, bitmap);
+        } else {
+            ok = printer.print(text);
+            if (mark != null && !mark.isEmpty()) {
+                // print() στα αριστερά ώστε να εκτελείται πάντα (χωρίς short-circuit).
+                ok = printer.print("\n--------------------------------\n") && ok;
+                ok = printer.print("ΠΑΡΟΧΟΣ: EPSILON DIGITAL\n") && ok;
+                ok = printer.print("MARK: " + mark + "\n") && ok;
+                ok = printer.print("UID: " + uid + "\n") && ok;
+                ok = printer.print("ΚΩΔ. ΑΥΘΕΝΤΙΚΟΠΟΙΗΣΗΣ (ΥΠΑΕΣ):\n" + auth + "\n") && ok;
+            }
+            if (qrUrl != null && !qrUrl.isEmpty()) {
+                if (printer instanceof BuiltinPrinter) {
+                    Printer zcsPrinter = ((BuiltinPrinter) printer).getPrinter();
+                    if (zcsPrinter != null) {
+                        zcsPrinter.setPrintAppendQRCode(qrUrl, 200, 200, Layout.Alignment.ALIGN_CENTER);
+                        ok = (zcsPrinter.setPrintStart() == SdkResult.SDK_OK) && ok;
                     }
                 } else {
-                    printer.print(text);
-                    if (mark != null && !mark.isEmpty()) {
-                        printer.print("\n--------------------------------\n");
-                        printer.print("ΠΑΡΟΧΟΣ: EPSILON DIGITAL\n");
-                        printer.print("MARK: " + mark + "\n");
-                        printer.print("UID: " + uid + "\n");
-                        printer.print("ΚΩΔ. ΑΥΘΕΝΤΙΚΟΠΟΙΗΣΗΣ (ΥΠΑΕΣ):\n" + auth + "\n");
-                    }
-                    if (qrUrl != null && !qrUrl.isEmpty()) {
-                        if (printer instanceof BuiltinPrinter) {
-                            Printer zcsPrinter = ((BuiltinPrinter) printer).getPrinter();
-                            if (zcsPrinter != null) {
-                                zcsPrinter.setPrintAppendQRCode(qrUrl, 200, 200, Layout.Alignment.ALIGN_CENTER);
-                                zcsPrinter.setPrintStart();
-                            }
-                        } else {
-                            printer.print("QR URL:\n" + qrUrl + "\n");
-                        }
-                    }
+                    ok = printer.print("QR URL:\n" + qrUrl + "\n") && ok;
                 }
-                printer.print("\n\n\n");
-                printer.cutPaper();
-            });
+            }
         }
-        receiptsRef.child(receiptId).removeValue();
+        boolean tail = printer.print("\n\n\n");
+        printer.cutPaper();
+        return ok && tail;
     }
 
     private String buildFullReceiptText(Map<String, Object> receiptData) {

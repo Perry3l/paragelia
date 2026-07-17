@@ -35,14 +35,14 @@ public class UsbPrinter implements PrinterDevice {
     }
 
     @Override
-    public void print(String text) {
-        manager.printText(text);
+    public boolean print(String text) {
+        return manager != null && manager.printText(text);
     }
 
-    public void printBitmap(Bitmap bitmap) {
-        if (manager == null) return;
+    public boolean printBitmap(Bitmap bitmap) {
+        if (manager == null) return false;
         byte[] data = BitmapPrinterHelper.bitmapToEscPos(bitmap);
-        manager.sendRaw(data);
+        return manager.sendRaw(data);
     }
 
     @Override

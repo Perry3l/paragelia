@@ -30,9 +30,10 @@ public class DeliveryActivity extends AppCompatActivity {
 
         fetchNextOrderNumber(orderNumber -> {
             currentOrderNumber = "DL-" + orderNumber;
-            ProductSelectionBottomSheet bottomSheet = ProductSelectionBottomSheet.newInstance(currentOrderNumber);
-            bottomSheet.show(getSupportFragmentManager(), "delivery_sheet");
-            bottomSheet.setOnDismissListener(dialog -> finish());
+            android.content.Intent intent = new android.content.Intent(this, QuickOrderActivity.class);
+            intent.putExtra(QuickOrderActivity.EXTRA_TABLE_NUMBER, currentOrderNumber);
+            startActivity(intent);
+            finish();
         });
     }
 
