@@ -58,7 +58,6 @@ public class PrinterActivity extends BaseActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_printer);
-        Log.e("UPDATE_TEST", "PrinterActivity.onCreate - about to call checkForUpdates");
         new AppUpdateManager(this).checkForUpdates();
         showMemoryOverlay();
 
